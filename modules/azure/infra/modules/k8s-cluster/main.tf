@@ -337,7 +337,7 @@ resource "azurerm_federated_identity_credential" "k8s_app" {
 # Routes traffic to LangSmith services by host/path via Ingress rules.
 # cert-manager integrates with NGINX to automate TLS certificate provisioning.
 resource "helm_release" "nginx_ingress" {
-  count      = var.ingress_controller == "nginx" ? 1 : 0
+  count      = var.ingress_controller == "nginx" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "ingress-nginx"
   namespace  = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -394,7 +394,7 @@ resource "helm_release" "nginx_ingress" {
 # istio-base: installs the Istio CRDs (VirtualService, Gateway, DestinationRule, etc.)
 # into the cluster. Must be applied first — istiod and the gateway depend on these CRDs.
 resource "helm_release" "istio_base" {
-  count      = var.ingress_controller == "istio" ? 1 : 0
+  count      = var.ingress_controller == "istio" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istio-base"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -407,7 +407,7 @@ resource "helm_release" "istio_base" {
 # istiod: the Istio control plane — manages service mesh policy, certificate
 # rotation, and injects Envoy sidecars into pods in mesh-enabled namespaces.
 resource "helm_release" "istiod" {
-  count      = var.ingress_controller == "istio" ? 1 : 0
+  count      = var.ingress_controller == "istio" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istiod"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -434,7 +434,7 @@ resource "helm_release" "istiod" {
 # Replaces NGINX when Istio is in use. Gateway + VirtualService resources
 # (in use-cases/istio/) route traffic to LangSmith services.
 resource "helm_release" "istio_gateway" {
-  count      = var.ingress_controller == "istio" && var.istio_external_gateway_enabled ? 1 : 0
+  count      = var.ingress_controller == "istio" && var.istio_external_gateway_enabled && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istio-ingressgateway"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -608,7 +608,7 @@ resource "azurerm_role_assignment" "agic_vnet_network_contributor" {
 # See: helm/values/examples/langsmith-values-ingress-envoy-gateway.yaml
 
 resource "helm_release" "envoy_gateway" {
-  count     = var.ingress_controller == "envoy-gateway" ? 1 : 0
+  count     = var.ingress_controller == "envoy-gateway" && !var.skip_in_cluster_resources ? 1 : 0
   name      = "envoy-gateway"
   namespace = "envoy-gateway-system"
   chart     = "oci://docker.io/envoyproxy/gateway-helm"

@@ -40,38 +40,38 @@ locals {
   # - "byo-vnet": use the spoke-network module's outputs (count[0]).
   # - "byo-subnet": use the BYO subnet IDs supplied via variables.
   vnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].vnet_id :
+    var.network_mode == "create" ? module.vnet[0].vnet_id :
     var.network_mode == "byo-vnet" ? var.spoke_vnet_id :
     var.vnet_id
   )
 
   aks_subnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].subnet_main_id :
+    var.network_mode == "create" ? module.vnet[0].subnet_main_id :
     var.network_mode == "byo-vnet" ? module.spoke_network[0].aks_subnet_id :
     var.aks_subnet_id
   )
 
   postgres_subnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].subnet_postgres_id :
+    var.network_mode == "create" ? module.vnet[0].subnet_postgres_id :
     var.network_mode == "byo-vnet" ? module.spoke_network[0].postgres_subnet_id :
     var.postgres_subnet_id
   )
 
   redis_subnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].subnet_redis_id :
+    var.network_mode == "create" ? module.vnet[0].subnet_redis_id :
     var.network_mode == "byo-vnet" ? module.spoke_network[0].redis_subnet_id :
     var.redis_subnet_id
   )
 
   agic_subnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].subnet_agic_id :
+    var.network_mode == "create" ? module.vnet[0].subnet_agic_id :
     var.network_mode == "byo-vnet" ? module.spoke_network[0].agic_subnet_id :
     ""
   )
 
   # Bastion subnet — used only by the bastion module (no var.bastion_subnet_id today).
   bastion_subnet_id = (
-    var.network_mode == "create"   ? module.vnet[0].subnet_bastion_id :
+    var.network_mode == "create" ? module.vnet[0].subnet_bastion_id :
     var.network_mode == "byo-vnet" ? module.spoke_network[0].bastion_subnet_id :
     ""
   )
@@ -368,7 +368,7 @@ module "keyvault" {
   # ── Secrets ─────────────────────────────────────────────────────────────────
   # Values come from TF_VAR_* on first apply. setup-env.sh reads from Key Vault
   # on subsequent applies, eliminating local .secret files.
-  postgres_admin_password = var.postgres_admin_password
+  postgres_admin_password  = var.postgres_admin_password
   langsmith_admin_password = var.langsmith_admin_password
   langsmith_license_key    = var.langsmith_license_key
   langsmith_api_key_salt   = var.langsmith_api_key_salt
@@ -398,9 +398,12 @@ module "keyvault" {
 #   Pass 2:   bash helm/scripts/generate-secrets.sh && bash helm/scripts/deploy.sh
 #   Pass 3+:  bash helm/scripts/deploy.sh --overlay overlays/<feature>.yaml
 #
-# Note: This module configures its own kubernetes/helm providers internally,
-# so depends_on cannot be used here. Implicit deps via input variables ensure
-# correct ordering (AKS/postgres/redis/blob must be ready before this runs).
+# Note: The kubernetes and helm providers used by this module are configured
+# at the root (see the provider blocks above, sourced from module.aks
+# credentials). The module's host/client_certificate/client_key/cluster_ca_certificate
+# input variables remain as documentation of the credentials its resources will use,
+# but the inline provider blocks were removed to enable count on this module
+# (Terraform forbids count on modules with inline provider configurations).
 
 module "k8s_bootstrap" {
   count  = var.skip_k8s_bootstrap ? 0 : 1
@@ -486,16 +489,16 @@ module "diagnostics" {
 # Enable with: create_bastion = true in terraform.tfvars
 
 module "bastion" {
-  count               = var.create_bastion ? 1 : 0
-  source              = "./modules/bastion"
-  name                = "langsmith-bastion${local.identifier}"
-  resource_group_name = azurerm_resource_group.resource_group.name
-  location            = var.location
-  subnet_id           = local.bastion_subnet_id
-  vm_size             = var.bastion_vm_size
+  count                = var.create_bastion ? 1 : 0
+  source               = "./modules/bastion"
+  name                 = "langsmith-bastion${local.identifier}"
+  resource_group_name  = azurerm_resource_group.resource_group.name
+  location             = var.location
+  subnet_id            = local.bastion_subnet_id
+  vm_size              = var.bastion_vm_size
   admin_ssh_public_key = var.bastion_admin_ssh_public_key
-  allowed_ssh_cidrs   = var.bastion_allowed_ssh_cidrs
-  tags                = local.common_tags
+  allowed_ssh_cidrs    = var.bastion_allowed_ssh_cidrs
+  tags                 = local.common_tags
 
   # depends_on removed — module.vnet may not exist (count=0) in non-create modes.
   # The implicit dependency through local.bastion_subnet_id is sufficient.

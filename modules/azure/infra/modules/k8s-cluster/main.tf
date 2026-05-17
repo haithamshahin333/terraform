@@ -210,6 +210,10 @@ resource "azurerm_kubernetes_cluster" "main" {
       condition     = var.outbound_type != "userDefinedRouting" || var.subnet_route_table_association_dependency != null
       error_message = "outbound_type='userDefinedRouting' requires the AKS subnet to have a route table association. Use network_mode='byo-vnet' (which creates one) or pre-associate the RT yourself before using byo-subnet mode."
     }
+    precondition {
+      condition     = var.private_dns_zone_id == "" || var.use_user_assigned_identity
+      error_message = "private_dns_zone_id (BYO private DNS zone) requires use_user_assigned_identity = true. Microsoft mandates UAMI for the BYO DNS-zone path so AKS can create the API server A record before cluster credentials become resolvable. Set aks_use_user_assigned_identity = true at the root."
+    }
 
     ignore_changes = [
       default_node_pool[0].upgrade_settings,
@@ -276,7 +280,7 @@ resource "azurerm_user_assigned_identity" "cert_manager" {
 # Allows cert-manager pod to exchange its K8s OIDC token for an Azure AD token
 # so it can call the Azure DNS API without a static service principal secret.
 resource "azurerm_federated_identity_credential" "cert_manager" {
-  name      = "${var.cluster_name}-cert-manager-federated"
+  name                      = "${var.cluster_name}-cert-manager-federated"
   user_assigned_identity_id = azurerm_user_assigned_identity.cert_manager.id
 
   audience = ["api://AzureADTokenExchange"]
@@ -324,7 +328,7 @@ resource "azurerm_role_assignment" "aks_cluster_dns_zone_contributor" {
 resource "azurerm_federated_identity_credential" "k8s_app" {
   for_each = toset(local.service_accounts_for_workload_identity)
 
-  name      = "langsmith-federated-${each.value}"
+  name                      = "langsmith-federated-${each.value}"
   user_assigned_identity_id = azurerm_user_assigned_identity.k8s_app.id
 
   audience = ["api://AzureADTokenExchange"]

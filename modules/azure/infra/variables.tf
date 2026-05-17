@@ -701,6 +701,6 @@ variable "skip_k8s_bootstrap" {
 
 variable "aks_use_user_assigned_identity" {
   type        = bool
-  default     = true
-  description = "Use UAMI for the AKS control plane (recommended). Required by Microsoft for the BYO private DNS zone path. Set false to keep legacy SAMI."
+  default     = false
+  description = "Use UAMI for the AKS control plane. Default false to preserve existing SAMI deployments — flipping this on an existing cluster kicks off a multi-hour Azure-side identity rotation (non-disruptive at the workload layer, but an unpleasant surprise mid-PR). Set true for new deployments. REQUIRED to be true when aks_private_dns_zone_id != \"\" (Microsoft mandate for BYO private DNS zone path); strongly RECOMMENDED when network_mode = \"byo-vnet\". The k8s-cluster module enforces the BYO-DNS-zone requirement via a precondition."
 }

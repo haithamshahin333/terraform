@@ -248,8 +248,8 @@ variable "skip_in_cluster_resources" {
 
 variable "use_user_assigned_identity" {
   type        = bool
-  default     = true
-  description = "Use UAMI for the AKS control plane. Required by Microsoft for the BYO private DNS zone path; highly recommended for BYO VNet + route table. Set false to preserve legacy SystemAssigned behavior."
+  default     = false
+  description = "Use UAMI for the AKS control plane. Default false to preserve legacy SAMI behavior on existing clusters. Set true for new deployments. The cluster resource has a precondition that REQUIRES this be true when private_dns_zone_id != \"\" (Microsoft mandate for BYO private DNS zone)."
 }
 
 variable "spoke_vnet_id" {

@@ -117,8 +117,19 @@ resource "azurerm_kubernetes_cluster" "main" {
   # System-assigned Managed Identity: AKS uses this to manage node VMs,
   # pull from ACR (if configured), and interact with the node resource group.
   identity {
-    type = "SystemAssigned"
+    type         = var.use_user_assigned_identity ? "UserAssigned" : "SystemAssigned"
+    identity_ids = var.use_user_assigned_identity ? [azurerm_user_assigned_identity.aks_cluster[0].id] : null
   }
+
+  # Private cluster + DNS zone. private_dns_zone_id = "System" lets AKS create
+  # its own zone in the MC_ RG; an explicit resource ID points at a BYO zone.
+  private_cluster_enabled             = var.private_cluster_enabled
+  private_cluster_public_fqdn_enabled = false
+  private_dns_zone_id = (
+    var.private_cluster_enabled
+    ? (var.private_dns_zone_id != "" ? var.private_dns_zone_id : "System")
+    : null
+  )
 
   # API server authorized IP ranges. Empty list (default) omits the block so
   # the master endpoint stays publicly reachable — required for the apply
@@ -126,7 +137,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # operators running ad-hoc kubectl from anywhere. Production deployments
   # populate var.authorized_ip_ranges with their CI runner / jumpbox CIDRs.
   dynamic "api_server_access_profile" {
-    for_each = length(var.authorized_ip_ranges) > 0 ? [1] : []
+    for_each = !var.private_cluster_enabled && length(var.authorized_ip_ranges) > 0 ? [1] : []
     content {
       authorized_ip_ranges = var.authorized_ip_ranges
     }
@@ -139,10 +150,21 @@ resource "azurerm_kubernetes_cluster" "main" {
   # NetworkPolicy resources actually deny traffic — without it, NetworkPolicy
   # objects are accepted by the API but never enforced.
   network_profile {
-    network_plugin = "azure"
-    network_policy = "azure"
-    service_cidr   = var.service_cidr   # default: 10.0.64.0/20 (K8s ClusterIP range)
-    dns_service_ip = var.dns_service_ip # default: 10.0.64.10  (CoreDNS ClusterIP)
+    network_plugin      = "azure"
+    network_plugin_mode = var.network_plugin_mode != "" ? var.network_plugin_mode : null
+    network_policy      = "azure"
+    service_cidr        = var.service_cidr
+    dns_service_ip      = var.dns_service_ip
+    outbound_type       = var.outbound_type
+
+    pod_cidr = var.network_plugin_mode == "overlay" ? var.pod_cidr : null
+
+    dynamic "load_balancer_profile" {
+      for_each = var.outbound_type == "loadBalancer" ? [1] : []
+      content {
+        managed_outbound_ip_count = 1
+      }
+    }
   }
 
   # Key Vault CSI Secrets Store driver — enables pods to mount secrets from
@@ -180,16 +202,25 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   lifecycle {
-    # upgrade_settings change during rolling node upgrades; ignore to prevent
-    # drift between Terraform state and live cluster configuration.
-    # zones: AKS does not support changing zones on an existing node pool —
-    # it is only applied at creation time. Ignoring prevents forced recreation
-    # when availability_zones is set on an existing cluster.
+    precondition {
+      condition     = var.network_plugin_mode != "overlay" || var.pod_cidr != ""
+      error_message = "network_plugin_mode='overlay' requires pod_cidr to be set."
+    }
+    precondition {
+      condition     = var.outbound_type != "userDefinedRouting" || var.subnet_route_table_association_dependency != null
+      error_message = "outbound_type='userDefinedRouting' requires the AKS subnet to have a route table association. Use network_mode='byo-vnet' (which creates one) or pre-associate the RT yourself before using byo-subnet mode."
+    }
+
     ignore_changes = [
       default_node_pool[0].upgrade_settings,
       default_node_pool[0].zones,
     ]
   }
+
+  depends_on = [
+    azurerm_role_assignment.aks_cluster_network_contributor,
+    azurerm_role_assignment.aks_cluster_dns_zone_contributor,
+  ]
 }
 
 # Additional node pools for workloads that need different compute profiles.

@@ -35,13 +35,53 @@ locals {
   # Uses the user-supplied keyvault_name or derives from identifier.
   keyvault_name = var.keyvault_name != "" ? var.keyvault_name : "langsmith-kv${local.identifier}"
 
-  # Subnet ID resolution: use newly-created VNet subnets OR bring-your-own
-  # existing ones (set create_vnet = false and supply the IDs via variables).
-  vnet_id            = var.create_vnet ? module.vnet.vnet_id : var.vnet_id
-  aks_subnet_id      = var.create_vnet ? module.vnet.subnet_main_id : var.aks_subnet_id
-  postgres_subnet_id = var.create_vnet ? module.vnet.subnet_postgres_id : var.postgres_subnet_id
-  redis_subnet_id    = var.create_vnet ? module.vnet.subnet_redis_id : var.redis_subnet_id
-  agic_subnet_id     = var.create_vnet ? module.vnet.subnet_agic_id : ""
+  # Subnet ID dispatch by network_mode.
+  # - "create": use the standalone VNet module's outputs (count[0]).
+  # - "byo-vnet": use the spoke-network module's outputs (count[0]).
+  # - "byo-subnet": use the BYO subnet IDs supplied via variables.
+  vnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].vnet_id :
+    var.network_mode == "byo-vnet" ? var.spoke_vnet_id :
+    var.vnet_id
+  )
+
+  aks_subnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].subnet_main_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].aks_subnet_id :
+    var.aks_subnet_id
+  )
+
+  postgres_subnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].subnet_postgres_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].postgres_subnet_id :
+    var.postgres_subnet_id
+  )
+
+  redis_subnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].subnet_redis_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].redis_subnet_id :
+    var.redis_subnet_id
+  )
+
+  agic_subnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].subnet_agic_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].agic_subnet_id :
+    ""
+  )
+
+  # Bastion subnet — used only by the bastion module (no var.bastion_subnet_id today).
+  bastion_subnet_id = (
+    var.network_mode == "create"   ? module.vnet[0].subnet_bastion_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].bastion_subnet_id :
+    ""
+  )
+
+  # Dependency hook for the AKS UDR ordering constraint. Resolves to the
+  # route-table-association resource ID when present, else null. The
+  # k8s-cluster module's precondition uses this to gate cluster creation.
+  aks_subnet_rt_association_dependency = (
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].aks_rt_association_id : null
+  )
 
   # ── Common tags ─────────────────────────────────────────────────────────────
   # Applied to every Azure resource in every sub-module.
@@ -67,10 +107,13 @@ resource "azurerm_resource_group" "resource_group" {
 }
 
 # ── Networking ────────────────────────────────────────────────────────────────
-# Creates VNet + three dedicated subnets (AKS, PostgreSQL, Redis).
-# Skip this block (create_vnet = false) to reuse an existing VNet.
+# Creates VNet + dedicated subnets (AKS, Postgres, Redis, AGIC, Bastion).
+# Only instantiated when network_mode = "create" — the parallel spoke-network
+# module handles network_mode = "byo-vnet", and "byo-subnet" mode uses BYO IDs
+# directly without instantiating either networking module.
 
 module "vnet" {
+  count               = var.network_mode == "create" ? 1 : 0
   source              = "./modules/networking"
   network_name        = local.vnet_name
   location            = var.location
@@ -90,6 +133,43 @@ module "vnet" {
   # AGIC subnet: provisioned only when ingress_controller = "agic"
   enable_agic                = var.ingress_controller == "agic"
   agic_subnet_address_prefix = var.agic_subnet_address_prefix
+
+  tags = local.common_tags
+}
+
+# ── Spoke network (network_mode = "byo-vnet") ────────────────────────────────
+# Creates subnets inside the customer's pre-existing spoke VNet. Each subnet
+# is either created (CIDR provided) or BYO (existing subnet ID provided).
+# Route-table association on the AKS subnet is required for AKS UDR mode.
+
+module "spoke_network" {
+  count  = var.network_mode == "byo-vnet" ? 1 : 0
+  source = "./modules/spoke-network"
+
+  spoke_vnet_id                  = var.spoke_vnet_id
+  spoke_vnet_name                = var.spoke_vnet_name
+  spoke_vnet_resource_group_name = var.spoke_vnet_resource_group_name
+
+  # AKS subnet — always managed in byo-vnet mode (no BYO subnet ID flow here).
+  aks_subnet_address_prefix    = var.spoke_aks_subnet_address_prefix
+  aks_subnet_route_table_id    = var.spoke_aks_subnet_route_table_id
+  aks_subnet_service_endpoints = var.spoke_aks_subnet_service_endpoints
+
+  # Sibling subnets — gated by the same flags that drive the existing module's outputs.
+  create_postgres_subnet         = var.postgres_source == "external"
+  postgres_subnet_address_prefix = var.spoke_postgres_subnet_address_prefix
+  postgres_subnet_route_table_id = var.spoke_postgres_subnet_route_table_id
+
+  create_redis_subnet         = var.redis_source == "external"
+  redis_subnet_address_prefix = var.spoke_redis_subnet_address_prefix
+  redis_subnet_route_table_id = var.spoke_redis_subnet_route_table_id
+
+  create_agic_subnet         = var.ingress_controller == "agic"
+  agic_subnet_address_prefix = var.spoke_agic_subnet_address_prefix
+  agic_subnet_route_table_id = var.spoke_agic_subnet_route_table_id
+
+  create_bastion_subnet         = var.create_bastion
+  bastion_subnet_address_prefix = var.spoke_bastion_subnet_address_prefix
 
   tags = local.common_tags
 }
@@ -370,13 +450,14 @@ module "bastion" {
   name                = "langsmith-bastion${local.identifier}"
   resource_group_name = azurerm_resource_group.resource_group.name
   location            = var.location
-  subnet_id           = module.vnet.subnet_bastion_id
+  subnet_id           = local.bastion_subnet_id
   vm_size             = var.bastion_vm_size
   admin_ssh_public_key = var.bastion_admin_ssh_public_key
   allowed_ssh_cidrs   = var.bastion_allowed_ssh_cidrs
   tags                = local.common_tags
 
-  depends_on = [module.vnet]
+  # depends_on removed — module.vnet may not exist (count=0) in non-create modes.
+  # The implicit dependency through local.bastion_subnet_id is sufficient.
 }
 
 # ── DNS (optional) ────────────────────────────────────────────────────────────

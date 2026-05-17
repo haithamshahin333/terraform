@@ -8,7 +8,7 @@ output "aks_subnet_id" {
 }
 
 output "aks_rt_association_id" {
-  description = "Resource ID of the AKS subnet's route-table association, or null when no RT was provided. The k8s-cluster module's depends_on uses this to gate cluster creation when outbound_type = userDefinedRouting."
+  description = "Resource ID of the AKS subnet's route-table association, or null when no RT was provided. The k8s-cluster module's depends_on uses this to gate cluster creation when outbound_type = userDefinedRouting. Null entries are silently dropped from depends_on lists, so it's safe to pass through unconditionally."
   value       = length(azurerm_subnet_route_table_association.aks) > 0 ? azurerm_subnet_route_table_association.aks[0].id : null
 }
 
@@ -40,7 +40,7 @@ output "agic_subnet_id" {
 }
 
 output "bastion_subnet_id" {
-  description = "Resource ID of the Bastion subnet (module-created, BYO, or empty string when not enabled)."
+  description = "Resource ID of the Bastion subnet (module-created, BYO, or empty string when not enabled). String type (not null) to match the existing networking module's contract."
   value = (
     var.bastion_subnet_id != "" ? var.bastion_subnet_id :
     var.create_bastion_subnet ? azurerm_subnet.bastion[0].id :

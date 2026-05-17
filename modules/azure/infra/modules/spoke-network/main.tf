@@ -11,6 +11,20 @@
 # for the AKS subnet when outbound_type = userDefinedRouting.
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Input validations (plan-time) ─────────────────────────────────────────────
+# Synthetic resource that hosts cross-variable preconditions. Surfaces config
+# errors at plan time instead of letting Azure reject the apply with a less
+# actionable message.
+
+resource "terraform_data" "input_validation" {
+  lifecycle {
+    precondition {
+      condition     = var.aks_subnet_id != "" || length(var.aks_subnet_address_prefix) > 0
+      error_message = "spoke-network: either aks_subnet_id (BYO subnet) or aks_subnet_address_prefix (CIDR for the module to create) must be set."
+    }
+  }
+}
+
 # ── AKS subnet ────────────────────────────────────────────────────────────────
 # Always managed — created in the spoke VNet's RG unless aks_subnet_id is set
 # (BYO). With Azure CNI Overlay, only nodes consume IPs from this subnet.

@@ -59,7 +59,7 @@ variable "aks_subnet_address_prefix" {
 variable "aks_subnet_route_table_id" {
   type        = string
   default     = ""
-  description = "Route table resource ID to associate with the AKS subnet. Required when aks_subnet_id is empty (outbound_type=userDefinedRouting mandates an RT before cluster creation)."
+  description = "Route table resource ID to associate with the AKS subnet. Required when the consuming k8s-cluster module is configured with outbound_type=userDefinedRouting AND aks_subnet_id is empty. If omitted, no association is created — leave unset for non-UDR clusters."
 }
 
 variable "aks_subnet_service_endpoints" {

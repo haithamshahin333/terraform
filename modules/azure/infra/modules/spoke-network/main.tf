@@ -112,3 +112,15 @@ resource "azurerm_subnet_route_table_association" "agic" {
   subnet_id      = azurerm_subnet.agic[0].id
   route_table_id = var.agic_subnet_route_table_id
 }
+
+# ── Bastion subnet ────────────────────────────────────────────────────────────
+# Name MUST be "AzureBastionSubnet" — Azure rejects any other name.
+# /27 minimum size.
+
+resource "azurerm_subnet" "bastion" {
+  count                = var.create_bastion_subnet && var.bastion_subnet_id == "" ? 1 : 0
+  name                 = "AzureBastionSubnet"
+  resource_group_name  = var.spoke_vnet_resource_group_name
+  virtual_network_name = var.spoke_vnet_name
+  address_prefixes     = var.bastion_subnet_address_prefix
+}

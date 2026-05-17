@@ -154,3 +154,25 @@ variable "agic_subnet_route_table_id" {
   default     = ""
   description = "Optional. WARNING: Application Gateway v2 control plane requires direct outbound to Microsoft management endpoints. A 0.0.0.0/0 → firewall route here breaks AGW health/reconciliation. Only set if your firewall preserves AGW management routes."
 }
+
+# ── Bastion subnet (when create_bastion = true) ───────────────────────────────
+# Subnet name is fixed to "AzureBastionSubnet" — Azure rejects any other name.
+# Route-table association is intentionally not exposed: Azure Bastion has
+# strict requirements for what routes are allowed and forcing the spoke RT
+# typically breaks Bastion session brokering.
+
+variable "create_bastion_subnet" {
+  type    = bool
+  default = false
+}
+
+variable "bastion_subnet_id" {
+  type    = string
+  default = ""
+}
+
+variable "bastion_subnet_address_prefix" {
+  type        = list(string)
+  default     = []
+  description = "/27 minimum. Used only when the module creates the subnet."
+}

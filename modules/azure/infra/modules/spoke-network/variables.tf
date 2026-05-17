@@ -16,7 +16,7 @@ variable "spoke_vnet_name" {
 
   validation {
     condition     = var.spoke_vnet_name != ""
-    error_message = "spoke_vnet_name is required."
+    error_message = "spoke_vnet_name is required when this module is instantiated."
   }
 }
 
@@ -26,11 +26,12 @@ variable "spoke_vnet_resource_group_name" {
 
   validation {
     condition     = var.spoke_vnet_resource_group_name != ""
-    error_message = "spoke_vnet_resource_group_name is required."
+    error_message = "spoke_vnet_resource_group_name is required when this module is instantiated."
   }
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  type        = map(string)
+  description = "Common Azure resource tags to apply to all resources in this module"
+  default     = {}
 }

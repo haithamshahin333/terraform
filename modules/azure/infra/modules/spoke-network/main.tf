@@ -68,3 +68,25 @@ resource "azurerm_subnet_route_table_association" "postgres" {
   subnet_id      = azurerm_subnet.postgres[0].id
   route_table_id = var.postgres_subnet_route_table_id
 }
+
+# ── Redis subnet ──────────────────────────────────────────────────────────────
+# Azure Redis Cache Premium tier requires an exclusive subnet (no other
+# resources allowed). Must be /28 or larger.
+
+resource "azurerm_subnet" "redis" {
+  count                = var.create_redis_subnet && var.redis_subnet_id == "" ? 1 : 0
+  name                 = var.redis_subnet_name
+  resource_group_name  = var.spoke_vnet_resource_group_name
+  virtual_network_name = var.spoke_vnet_name
+  address_prefixes     = var.redis_subnet_address_prefix
+}
+
+resource "azurerm_subnet_route_table_association" "redis" {
+  count = (
+    var.create_redis_subnet
+    && var.redis_subnet_id == ""
+    && var.redis_subnet_route_table_id != ""
+  ) ? 1 : 0
+  subnet_id      = azurerm_subnet.redis[0].id
+  route_table_id = var.redis_subnet_route_table_id
+}

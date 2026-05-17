@@ -97,3 +97,31 @@ variable "postgres_subnet_route_table_id" {
   default     = ""
   description = "Optional. Most production setups leave this null — Flex Server only talks intra-VNet."
 }
+
+# ── Redis subnet (when redis_source = "external") ─────────────────────────────
+
+variable "create_redis_subnet" {
+  type    = bool
+  default = false
+}
+
+variable "redis_subnet_id" {
+  type    = string
+  default = ""
+}
+
+variable "redis_subnet_name" {
+  type    = string
+  default = "snet-redis"
+}
+
+variable "redis_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+variable "redis_subnet_route_table_id" {
+  type        = string
+  default     = ""
+  description = "Optional. WARNING: Azure Redis Premium has outbound dependencies on Azure Storage, AAD, monitoring, and CRL endpoints. A 0.0.0.0/0 → firewall UDR here requires the firewall to allow those — otherwise Redis fails background tasks."
+}

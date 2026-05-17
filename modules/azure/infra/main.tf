@@ -98,6 +98,27 @@ locals {
   )
 }
 
+# ── Cluster-scoped providers ─────────────────────────────────────────────────
+# Configured from module.aks credentials. Inherited by module.k8s_bootstrap
+# (which used to declare these blocks inline — moving them here unblocks
+# count on that module, which is needed for the skip_k8s_bootstrap flag).
+
+provider "kubernetes" {
+  host                   = module.aks.host
+  client_certificate     = base64decode(module.aks.client_certificate)
+  client_key             = base64decode(module.aks.client_key)
+  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.aks.host
+    client_certificate     = base64decode(module.aks.client_certificate)
+    client_key             = base64decode(module.aks.client_key)
+    cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+  }
+}
+
 # The resource group that contains all LangSmith Azure resources.
 # Deleting this resource group will delete EVERYTHING inside it.
 resource "azurerm_resource_group" "resource_group" {
@@ -382,6 +403,7 @@ module "keyvault" {
 # correct ordering (AKS/postgres/redis/blob must be ready before this runs).
 
 module "k8s_bootstrap" {
+  count  = var.skip_k8s_bootstrap ? 0 : 1
   source = "./modules/k8s-bootstrap"
 
   # Cluster connection — passed directly to the kubernetes/helm providers

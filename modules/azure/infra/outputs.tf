@@ -84,8 +84,8 @@ output "langsmith_admin_email" {
 }
 
 output "langsmith_namespace" {
-  description = "Kubernetes namespace where LangSmith is deployed"
-  value       = module.k8s_bootstrap.langsmith_namespace
+  description = "Kubernetes namespace where LangSmith is deployed (empty when skip_k8s_bootstrap=true — customer creates the namespace from the jump-host)."
+  value       = var.skip_k8s_bootstrap ? "" : module.k8s_bootstrap[0].langsmith_namespace
 }
 
 output "get_credentials_command" {

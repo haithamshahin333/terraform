@@ -223,6 +223,25 @@ module "aks" {
   # in terraform.tfvars to restrict to operator/CI CIDRs.
   authorized_ip_ranges = var.aks_authorized_ip_ranges
 
+  # Hub-spoke production knobs (default to no-ops when not set)
+  private_cluster_enabled = var.aks_private_cluster_enabled
+  private_dns_zone_id     = var.aks_private_dns_zone_id
+  network_plugin_mode     = var.aks_network_plugin_mode
+  pod_cidr                = var.aks_pod_cidr
+  outbound_type           = var.aks_outbound_type
+
+  # AKS UDR ordering — the cluster's precondition reads this to confirm
+  # the route-table-association exists before cluster create.
+  subnet_route_table_association_dependency = local.aks_subnet_rt_association_dependency
+
+  # Private-cluster bootstrap path — skip Helm ingress when caller cannot
+  # reach the private API server from terraform apply host.
+  skip_in_cluster_resources = var.skip_k8s_bootstrap
+
+  # UAMI for the cluster control plane — required for BYO private DNS zone.
+  use_user_assigned_identity = var.aks_use_user_assigned_identity
+  spoke_vnet_id              = var.network_mode == "byo-vnet" ? var.spoke_vnet_id : ""
+
   tags = local.common_tags
 }
 

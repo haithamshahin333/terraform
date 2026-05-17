@@ -67,3 +67,33 @@ variable "aks_subnet_service_endpoints" {
   default     = ["Microsoft.Storage", "Microsoft.KeyVault"]
   description = "Service endpoints on the AKS subnet. Default matches existing module behavior so the Blob/KV deny-by-default firewalls keep allowlisting the subnet. Set to [] to force all egress through the hub firewall."
 }
+
+# ── Postgres subnet (when postgres_source = "external") ───────────────────────
+
+variable "create_postgres_subnet" {
+  type        = bool
+  default     = false
+  description = "Whether the module should manage a Postgres subnet. Set true by the root module when postgres_source = external AND postgres_subnet_id is empty."
+}
+
+variable "postgres_subnet_id" {
+  type        = string
+  default     = ""
+  description = "BYO: pre-existing Postgres subnet resource ID (with Microsoft.DBforPostgreSQL/flexibleServers delegation already in place)."
+}
+
+variable "postgres_subnet_name" {
+  type    = string
+  default = "snet-postgres"
+}
+
+variable "postgres_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+variable "postgres_subnet_route_table_id" {
+  type        = string
+  default     = ""
+  description = "Optional. Most production setups leave this null — Flex Server only talks intra-VNet."
+}

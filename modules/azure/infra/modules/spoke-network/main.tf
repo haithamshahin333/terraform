@@ -33,3 +33,38 @@ resource "azurerm_subnet_route_table_association" "aks" {
   subnet_id      = azurerm_subnet.aks[0].id
   route_table_id = var.aks_subnet_route_table_id
 }
+
+# ── Postgres subnet ───────────────────────────────────────────────────────────
+# Delegated to Microsoft.DBforPostgreSQL/flexibleServers — the delegation
+# grants the service permission to inject NICs into the subnet. No other
+# resources may share a delegated subnet.
+
+resource "azurerm_subnet" "postgres" {
+  count                = var.create_postgres_subnet && var.postgres_subnet_id == "" ? 1 : 0
+  name                 = var.postgres_subnet_name
+  resource_group_name  = var.spoke_vnet_resource_group_name
+  virtual_network_name = var.spoke_vnet_name
+  address_prefixes     = var.postgres_subnet_address_prefix
+
+  delegation {
+    name = "postgresql-delegation"
+
+    service_delegation {
+      name = "Microsoft.DBforPostgreSQL/flexibleServers"
+
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+      ]
+    }
+  }
+}
+
+resource "azurerm_subnet_route_table_association" "postgres" {
+  count = (
+    var.create_postgres_subnet
+    && var.postgres_subnet_id == ""
+    && var.postgres_subnet_route_table_id != ""
+  ) ? 1 : 0
+  subnet_id      = azurerm_subnet.postgres[0].id
+  route_table_id = var.postgres_subnet_route_table_id
+}

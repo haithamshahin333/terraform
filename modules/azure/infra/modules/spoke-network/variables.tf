@@ -35,3 +35,35 @@ variable "tags" {
   description = "Common Azure resource tags to apply to all resources in this module"
   default     = {}
 }
+
+# ── AKS subnet (always managed: create or BYO) ────────────────────────────────
+
+variable "aks_subnet_id" {
+  type        = string
+  default     = ""
+  description = "BYO: pre-existing AKS subnet resource ID. If empty, the module creates one using aks_subnet_address_prefix + aks_subnet_route_table_id."
+}
+
+variable "aks_subnet_name" {
+  type        = string
+  default     = "snet-aks"
+  description = "Name of the AKS subnet (used only when the module creates it)."
+}
+
+variable "aks_subnet_address_prefix" {
+  type        = list(string)
+  default     = []
+  description = "CIDR(s) for the AKS subnet. Required when aks_subnet_id is empty. With CNI Overlay a /24 is typically enough — only nodes consume IPs from this range."
+}
+
+variable "aks_subnet_route_table_id" {
+  type        = string
+  default     = ""
+  description = "Route table resource ID to associate with the AKS subnet. Required when aks_subnet_id is empty (outbound_type=userDefinedRouting mandates an RT before cluster creation)."
+}
+
+variable "aks_subnet_service_endpoints" {
+  type        = list(string)
+  default     = ["Microsoft.Storage", "Microsoft.KeyVault"]
+  description = "Service endpoints on the AKS subnet. Default matches existing module behavior so the Blob/KV deny-by-default firewalls keep allowlisting the subnet. Set to [] to force all egress through the hub firewall."
+}

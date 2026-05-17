@@ -155,3 +155,38 @@ output "dns_nameservers" {
   description = "Azure nameservers for the DNS zone — configure at your registrar"
   value       = var.create_dns_zone ? module.dns[0].nameservers : []
 }
+
+# ── Hub-spoke / private cluster outputs ───────────────────────────────────────
+
+output "aks_private_fqdn" {
+  description = "Private FQDN of the API server. Set only when aks_private_cluster_enabled = true. Used by operators on a jump-host that resolves via the hub's DNS resolver."
+  value       = module.aks.private_fqdn
+}
+
+output "spoke_aks_subnet_id" {
+  description = "Resource ID of the AKS subnet (module-created or BYO). Useful for downstream IaC that needs to add NSG rules, private endpoints, etc."
+  value       = local.aks_subnet_id
+}
+
+output "network_mode" {
+  description = "Echoes the network_mode the deployment used."
+  value       = var.network_mode
+}
+
+# ── Post-apply bootstrap (consumed when skip_k8s_bootstrap = true) ───────────
+# Existing outputs already in this file are also consumed by the post-apply
+# flow — see docs/superpowers/specs/2026-05-17-aks-hub-spoke-byo-vnet-design.md
+# §10.3 for the canonical bootstrap sequence. These two new outputs round out
+# the set so a jump-host can recreate every K8s secret and Helm release.
+
+output "postgres_admin_password" {
+  description = "Postgres admin password (echoes var.postgres_admin_password). Used by post-apply bootstrap to populate POSTGRES_PASSWORD in langsmith-postgres-secret."
+  value       = var.postgres_admin_password
+  sensitive   = true
+}
+
+output "langsmith_license_key_value" {
+  description = "LangSmith license key (echoes var.langsmith_license_key). Used by post-apply bootstrap to create the langsmith-license secret. Name avoids collision with the input variable."
+  value       = var.langsmith_license_key
+  sensitive   = true
+}

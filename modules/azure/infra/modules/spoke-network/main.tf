@@ -90,3 +90,25 @@ resource "azurerm_subnet_route_table_association" "redis" {
   subnet_id      = azurerm_subnet.redis[0].id
   route_table_id = var.redis_subnet_route_table_id
 }
+
+# ── AGIC subnet ───────────────────────────────────────────────────────────────
+# Azure Application Gateway v2 requires its own dedicated subnet (no other
+# resources may live in it). Minimum size /24.
+
+resource "azurerm_subnet" "agic" {
+  count                = var.create_agic_subnet && var.agic_subnet_id == "" ? 1 : 0
+  name                 = var.agic_subnet_name
+  resource_group_name  = var.spoke_vnet_resource_group_name
+  virtual_network_name = var.spoke_vnet_name
+  address_prefixes     = var.agic_subnet_address_prefix
+}
+
+resource "azurerm_subnet_route_table_association" "agic" {
+  count = (
+    var.create_agic_subnet
+    && var.agic_subnet_id == ""
+    && var.agic_subnet_route_table_id != ""
+  ) ? 1 : 0
+  subnet_id      = azurerm_subnet.agic[0].id
+  route_table_id = var.agic_subnet_route_table_id
+}

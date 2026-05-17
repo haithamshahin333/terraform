@@ -125,3 +125,32 @@ variable "redis_subnet_route_table_id" {
   default     = ""
   description = "Optional. WARNING: Azure Redis Premium has outbound dependencies on Azure Storage, AAD, monitoring, and CRL endpoints. A 0.0.0.0/0 → firewall UDR here requires the firewall to allow those — otherwise Redis fails background tasks."
 }
+
+# ── AGIC subnet (when ingress_controller = "agic") ────────────────────────────
+
+variable "create_agic_subnet" {
+  type    = bool
+  default = false
+}
+
+variable "agic_subnet_id" {
+  type    = string
+  default = ""
+}
+
+variable "agic_subnet_name" {
+  type    = string
+  default = "snet-agic"
+}
+
+variable "agic_subnet_address_prefix" {
+  type        = list(string)
+  default     = []
+  description = "/24 minimum (Azure Application Gateway v2 requirement)."
+}
+
+variable "agic_subnet_route_table_id" {
+  type        = string
+  default     = ""
+  description = "Optional. WARNING: Application Gateway v2 control plane requires direct outbound to Microsoft management endpoints. A 0.0.0.0/0 → firewall route here breaks AGW health/reconciliation. Only set if your firewall preserves AGW management routes."
+}

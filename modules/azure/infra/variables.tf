@@ -581,3 +581,126 @@ variable "envoy_gateway_version" {
   description = "Envoy Gateway Helm chart version. Only used when ingress_controller = 'envoy-gateway'."
   default     = "v1.2.0"
 }
+
+# ── Network mode & spoke VNet (hub-spoke / BYO-VNet path) ────────────────────
+
+variable "network_mode" {
+  type        = string
+  default     = "create"
+  description = "How VNet/subnet resources are managed. 'create' = module creates a standalone VNet (current default). 'byo-vnet' = customer provides spoke_vnet_id; module creates subnets inside it. 'byo-subnet' = customer provides every subnet ID; module creates nothing network-wise."
+
+  validation {
+    condition     = contains(["create", "byo-vnet", "byo-subnet"], var.network_mode)
+    error_message = "network_mode must be 'create', 'byo-vnet', or 'byo-subnet'."
+  }
+}
+
+variable "spoke_vnet_id" {
+  type        = string
+  default     = ""
+  description = "Resource ID of the customer's spoke VNet. Required when network_mode='byo-vnet'."
+}
+
+variable "spoke_vnet_name" {
+  type        = string
+  default     = ""
+  description = "Name of the spoke VNet. Required when network_mode='byo-vnet'."
+}
+
+variable "spoke_vnet_resource_group_name" {
+  type        = string
+  default     = ""
+  description = "Resource group of the spoke VNet. Required when network_mode='byo-vnet'."
+}
+
+variable "spoke_aks_subnet_address_prefix" {
+  type        = list(string)
+  default     = []
+  description = "CIDR for the AKS subnet inside the spoke VNet. With CNI Overlay, /24 is typically sufficient."
+}
+
+variable "spoke_aks_subnet_route_table_id" {
+  type        = string
+  default     = ""
+  description = "Customer-managed route table to associate with the AKS subnet. Required for outbound_type=userDefinedRouting."
+}
+
+variable "spoke_aks_subnet_service_endpoints" {
+  type    = list(string)
+  default = ["Microsoft.Storage", "Microsoft.KeyVault"]
+}
+
+variable "spoke_postgres_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+variable "spoke_postgres_subnet_route_table_id" {
+  type    = string
+  default = ""
+}
+
+variable "spoke_redis_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+variable "spoke_redis_subnet_route_table_id" {
+  type    = string
+  default = ""
+}
+
+variable "spoke_agic_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+variable "spoke_agic_subnet_route_table_id" {
+  type    = string
+  default = ""
+}
+
+variable "spoke_bastion_subnet_address_prefix" {
+  type    = list(string)
+  default = []
+}
+
+# ── Production AKS knobs (apply regardless of network_mode) ──────────────────
+
+variable "aks_private_cluster_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "aks_private_dns_zone_id" {
+  type        = string
+  default     = ""
+  description = "Customer-managed private DNS zone for the API server. Must be named privatelink.<region>.azmk8s.io. Empty + private_cluster_enabled=true uses System."
+}
+
+variable "aks_network_plugin_mode" {
+  type    = string
+  default = ""
+}
+
+variable "aks_pod_cidr" {
+  type    = string
+  default = ""
+}
+
+variable "aks_outbound_type" {
+  type    = string
+  default = "loadBalancer"
+}
+
+variable "skip_k8s_bootstrap" {
+  type        = bool
+  default     = false
+  description = "Skip the k8s_bootstrap module AND the Helm ingress controllers in k8s-cluster. Use for private clusters when terraform apply runs from a host outside the cluster's network reach."
+}
+
+variable "aks_use_user_assigned_identity" {
+  type        = bool
+  default     = true
+  description = "Use UAMI for the AKS control plane (recommended). Required by Microsoft for the BYO private DNS zone path. Set false to keep legacy SAMI."
+}

@@ -253,6 +253,41 @@ resource "azurerm_federated_identity_credential" "cert_manager" {
   subject  = "system:serviceaccount:cert-manager:cert-manager"
 }
 
+# ── Cluster control plane UAMI ────────────────────────────────────────────────
+# Microsoft requires UAMI (not SAMI) for the BYO private DNS zone path and
+# highly recommends it for BYO VNet + route table. The identity is created
+# BEFORE the cluster so role assignments on the spoke VNet and BYO DNS zone
+# can be pre-assigned — no time_sleep workaround needed.
+# See: https://learn.microsoft.com/azure/aks/use-managed-identity
+
+resource "azurerm_user_assigned_identity" "aks_cluster" {
+  count               = var.use_user_assigned_identity ? 1 : 0
+  name                = "${var.cluster_name}-cluster-identity"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  tags                = merge(var.tags, { module = "aks" })
+}
+
+# Network Contributor on the spoke VNet — needed when the AKS subnet is in a
+# different RG than the cluster (always true in byo-vnet mode). Without this,
+# AKS create fails to read the subnet/route table, or node pool ops fail later.
+resource "azurerm_role_assignment" "aks_cluster_network_contributor" {
+  count                = var.use_user_assigned_identity && var.spoke_vnet_id != "" ? 1 : 0
+  scope                = var.spoke_vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_cluster[0].principal_id
+}
+
+# Private DNS Zone Contributor on the BYO zone — required for AKS to create
+# the A record for the API server private endpoint. Microsoft documents this
+# as mandatory for the custom private DNS zone path.
+resource "azurerm_role_assignment" "aks_cluster_dns_zone_contributor" {
+  count                = var.use_user_assigned_identity && var.private_dns_zone_id != "" ? 1 : 0
+  scope                = var.private_dns_zone_id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_cluster[0].principal_id
+}
+
 # Federated Identity Credentials — bind each LangSmith K8s service account to
 # the Managed Identity via OIDC. One credential per service account.
 resource "azurerm_federated_identity_credential" "k8s_app" {

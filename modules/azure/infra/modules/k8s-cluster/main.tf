@@ -37,11 +37,13 @@ locals {
   # AGIC add-on identity — extracted from the cluster resource after apply.
   # Azure creates this identity automatically in the MC_ node resource group.
   # The identity needs 3 role assignments (see below).
-  agic_addon_principal_id = (
-    var.ingress_controller == "agic" &&
-    length(azurerm_kubernetes_cluster.main.ingress_application_gateway) > 0 &&
-    length(azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity) > 0
-  ) ? azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id : null
+  # try() wraps the index access because Terraform's && does not always short-
+  # circuit early enough for index expressions on empty lists; when AGIC is off,
+  # ingress_application_gateway is [], and the [0] would otherwise fail eagerly.
+  agic_addon_principal_id = var.ingress_controller == "agic" ? try(
+    azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id,
+    null
+  ) : null
 
   # Derive VNet resource ID from the AGIC subnet ID by stripping the /subnets/... suffix.
   # e.g. /subscriptions/.../virtualNetworks/langsmith-vnet-dz/subnets/langsmith-vnet-dz-subnet-agic

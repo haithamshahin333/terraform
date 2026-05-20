@@ -1,28 +1,8 @@
 # ── Cluster connection ────────────────────────────────────────────────────────
-
-variable "host" {
-  type        = string
-  description = "Kubernetes API server endpoint"
-  sensitive   = true
-}
-
-variable "client_certificate" {
-  type        = string
-  description = "Base64-encoded client certificate from AKS kube_config"
-  sensitive   = true
-}
-
-variable "client_key" {
-  type        = string
-  description = "Base64-encoded client key from AKS kube_config"
-  sensitive   = true
-}
-
-variable "cluster_ca_certificate" {
-  type        = string
-  description = "Base64-encoded cluster CA certificate from AKS kube_config"
-  sensitive   = true
-}
+# The kubernetes and helm providers used by this module are configured at the
+# root (modules/azure/infra/main.tf) and inherited here. Cluster credentials
+# come from module.aks outputs there — this module does not need to receive
+# them as inputs.
 
 # ── Namespace ─────────────────────────────────────────────────────────────────
 

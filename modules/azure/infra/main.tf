@@ -400,21 +400,14 @@ module "keyvault" {
 #
 # Note: The kubernetes and helm providers used by this module are configured
 # at the root (see the provider blocks above, sourced from module.aks
-# credentials). The module's host/client_certificate/client_key/cluster_ca_certificate
-# input variables remain as documentation of the credentials its resources will use,
-# but the inline provider blocks were removed to enable count on this module
-# (Terraform forbids count on modules with inline provider configurations).
+# credentials). They're inherited implicitly by this module. The inline
+# provider blocks that used to live inside k8s-bootstrap were moved out so
+# that count = var.skip_k8s_bootstrap ? 0 : 1 works (Terraform forbids count
+# on modules with inline provider configurations).
 
 module "k8s_bootstrap" {
   count  = var.skip_k8s_bootstrap ? 0 : 1
   source = "./modules/k8s-bootstrap"
-
-  # Cluster connection — passed directly to the kubernetes/helm providers
-  # inside the k8s-bootstrap module.
-  host                   = module.aks.host
-  client_certificate     = module.aks.client_certificate
-  client_key             = module.aks.client_key
-  cluster_ca_certificate = module.aks.cluster_ca_certificate
 
   # K8s namespace for LangSmith workloads
   langsmith_namespace = var.langsmith_namespace

@@ -231,9 +231,10 @@ variable "outbound_type" {
 }
 
 variable "subnet_route_table_association_dependency" {
-  type        = any
+  type        = string
   default     = null
-  description = "Opaque dependency hook. The root module passes the spoke-network module's RT association resource ID through so the cluster's depends_on properly orders cluster creation after the RT-subnet association. Required when outbound_type = userDefinedRouting."
+  nullable    = true
+  description = "Dependency hook. The root module passes the spoke-network module's RT association resource ID through so the cluster's depends_on can order cluster creation after the RT-subnet association exists. Required (non-null) when outbound_type = userDefinedRouting — enforced via lifecycle precondition. Null when outbound_type = loadBalancer."
 }
 
 # ── In-cluster resource skip (private cluster bootstrap) ─────────────────────

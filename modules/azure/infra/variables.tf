@@ -626,71 +626,83 @@ variable "spoke_aks_subnet_route_table_id" {
 }
 
 variable "spoke_aks_subnet_service_endpoints" {
-  type    = list(string)
-  default = ["Microsoft.Storage", "Microsoft.KeyVault"]
+  type        = list(string)
+  default     = ["Microsoft.Storage", "Microsoft.KeyVault"]
+  description = "Service endpoints on the AKS subnet. Default matches the standalone networking module so the Blob/KV deny-by-default firewalls keep allowlisting the subnet. WARNING: with these endpoints, Storage and KeyVault traffic takes the direct service-endpoint path and BYPASSES the hub firewall. Set to [] for compliance-strict deployments (and pair with Phase 2 private endpoints to keep Storage/KV reachable)."
 }
 
 variable "spoke_postgres_subnet_address_prefix" {
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
+  description = "CIDR for the Postgres subnet inside the spoke VNet. Required when network_mode='byo-vnet' AND postgres_source='external'. Subnet is delegated to Microsoft.DBforPostgreSQL/flexibleServers automatically."
 }
 
 variable "spoke_postgres_subnet_route_table_id" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "Optional route table to associate with the Postgres subnet. Most production setups leave this empty — Flex Server only talks intra-VNet, no UDR needed."
 }
 
 variable "spoke_redis_subnet_address_prefix" {
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
+  description = "CIDR for the Redis subnet inside the spoke VNet. Required when network_mode='byo-vnet' AND redis_source='external'. Premium Redis requires an exclusive subnet (no other resources)."
 }
 
 variable "spoke_redis_subnet_route_table_id" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "Optional route table to associate with the Redis subnet. WARNING: Azure Redis Premium has outbound dependencies on Azure Storage, AAD, monitoring, and CRL endpoints — a 0.0.0.0/0 → firewall UDR here requires the firewall to allow those, otherwise Redis silently fails background tasks."
 }
 
 variable "spoke_agic_subnet_address_prefix" {
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
+  description = "CIDR for the AGIC subnet inside the spoke VNet. Required when network_mode='byo-vnet' AND ingress_controller='agic'. /24 minimum (Application Gateway v2 requirement)."
 }
 
 variable "spoke_agic_subnet_route_table_id" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "Optional route table for the AGIC subnet. WARNING: Application Gateway v2 control plane requires direct outbound to Microsoft management endpoints. A 0.0.0.0/0 → firewall UDR here breaks AGW health/reconciliation. Only set if your firewall preserves AGW management routes."
 }
 
 variable "spoke_bastion_subnet_address_prefix" {
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
+  description = "CIDR for the Bastion subnet inside the spoke VNet. Required when network_mode='byo-vnet' AND create_bastion=true. Module hardcodes the subnet name to 'AzureBastionSubnet' (Azure requirement). /27 minimum."
 }
 
 # ── Production AKS knobs (apply regardless of network_mode) ──────────────────
 
 variable "aks_private_cluster_enabled" {
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
+  description = "Make the AKS API server a private endpoint (no public FQDN). Required for hub-spoke production deployments. When true, the terraform apply host must reach the private API IP — see spec §10.2 for the jump-host / VPN / ER options."
 }
 
 variable "aks_private_dns_zone_id" {
   type        = string
   default     = ""
-  description = "Customer-managed private DNS zone for the API server. Must be named privatelink.<region>.azmk8s.io. Empty + private_cluster_enabled=true uses System."
+  description = "Customer-managed private DNS zone for the API server. Must be named privatelink.<region>.azmk8s.io. Empty + private_cluster_enabled=true uses System (AKS auto-creates zone in MC_ RG, linked to spoke only). Setting this REQUIRES aks_use_user_assigned_identity=true (enforced by cluster precondition)."
 }
 
 variable "aks_network_plugin_mode" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "Azure CNI mode. Empty = classic CNI (pod IPs from VNet subnet). 'overlay' = CNI Overlay (pod IPs from aks_pod_cidr, drastically reduces subnet IP consumption). Overlay requires aks_pod_cidr to be set (enforced by cluster precondition)."
 }
 
 variable "aks_pod_cidr" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "Pod CIDR for CNI Overlay (required when aks_network_plugin_mode='overlay'). Must not overlap the VNet, aks_service_cidr, or any peered network including other spokes. Typical value: 10.244.0.0/16."
 }
 
 variable "aks_outbound_type" {
-  type    = string
-  default = "loadBalancer"
+  type        = string
+  default     = "loadBalancer"
+  description = "AKS cluster egress mode. 'loadBalancer' (default) provisions a public Standard LB. 'userDefinedRouting' relies on the AKS subnet's route table — required for hub-spoke topologies where a firewall in the hub inspects outbound. The cluster precondition forbids userDefinedRouting unless the subnet has an RT association (use network_mode='byo-vnet' or pre-associate)."
 }
 
 variable "skip_k8s_bootstrap" {

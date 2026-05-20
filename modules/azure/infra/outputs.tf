@@ -185,8 +185,8 @@ output "postgres_admin_password" {
   sensitive   = true
 }
 
-output "langsmith_license_key_value" {
-  description = "LangSmith license key (echoes var.langsmith_license_key). Used by post-apply bootstrap to create the langsmith-license secret. Name avoids collision with the input variable."
+output "langsmith_license_key" {
+  description = "LangSmith license key (echoes var.langsmith_license_key). Used by post-apply bootstrap to create the langsmith-license secret. Outputs and variables share names safely — they're in distinct namespaces."
   value       = var.langsmith_license_key
   sensitive   = true
 }

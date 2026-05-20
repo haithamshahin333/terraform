@@ -3,20 +3,23 @@
 # Purpose: Azure Kubernetes Service cluster for running LangSmith workloads.
 #
 # Key design decisions:
-#   • Azure CNI network plugin: pods get IPs directly from the subnet, enabling
-#     full VNet connectivity (pods can reach PostgreSQL/Redis by private IP).
-#     Tradeoff: uses more IPs than kubenet, but required for private DB access.
+#   • Azure CNI network plugin: pods get IPs directly from the subnet (classic)
+#     or from pod_cidr (overlay). Classic gives full VNet connectivity; overlay
+#     dramatically reduces subnet IP consumption. Toggle via network_plugin_mode.
 #   • OIDC issuer + Workload Identity: allows Kubernetes service accounts to
 #     federate with Azure AD and assume Managed Identities — used by LangSmith
 #     pods to authenticate to Azure Blob Storage without static keys.
-#   • System-assigned Managed Identity: AKS manages its own identity for
-#     pulling images, accessing node resource group, and VMSS operations.
+#   • Cluster control plane identity: switchable between SystemAssigned (default,
+#     legacy back-compat) and UserAssigned (required for BYO private DNS zone
+#     and hub-spoke BYO-VNet modes — Microsoft mandates UAMI when role
+#     assignments must exist before cluster creation).
 #   • Default node pool: Standard_DS3_v2 (4 vCPU, 14 GB RAM) — DSv2 family
 #     has broad quota availability across subscriptions.
 #   • Additional "large" pool: Standard_DS4_v2 (8 vCPU, 28 GB) for ClickHouse
 #     and other stateful/memory-intensive workloads.
-#   • NGINX ingress: deployed via Helm, exposes a single Azure Load Balancer
-#     IP that routes to all LangSmith services by path/host.
+#   • NGINX ingress: deployed via Helm, exposes an Azure Load Balancer
+#     (public or internal). Skippable for private clusters where bootstrap
+#     runs from a jump-host (see skip_in_cluster_resources).
 # ══════════════════════════════════════════════════════════════════════════════
 
 locals {
@@ -107,15 +110,18 @@ resource "azurerm_kubernetes_cluster" "main" {
     # Required when auto_scaling_enabled = true and the pool is being replaced.
     temporary_name_for_rotation = "defaulttmp"
 
-    # max_surge = "0" prevents AKS from creating a temporary surge node during
-    # node pool updates (e.g. max_pods change). Instead it drains the existing
-    # node in-place. Required when vCPU quota is tight (surge needs quota for
-    # a full extra node of the same VM size).
+    # Availability zones the default node pool spreads across. Pinned at
+    # creation time — AKS does not support changing zones on an existing
+    # node pool (see lifecycle.ignore_changes below).
     zones = var.availability_zones
   }
 
-  # System-assigned Managed Identity: AKS uses this to manage node VMs,
-  # pull from ACR (if configured), and interact with the node resource group.
+  # Cluster control plane identity. Defaults to SystemAssigned (legacy AKS
+  # default — created with the cluster). When var.use_user_assigned_identity
+  # is true, switches to a UserAssigned identity created in this module
+  # (see azurerm_user_assigned_identity.aks_cluster below) so role
+  # assignments on the spoke VNet and BYO private DNS zone can be created
+  # BEFORE the cluster.
   identity {
     type         = var.use_user_assigned_identity ? "UserAssigned" : "SystemAssigned"
     identity_ids = var.use_user_assigned_identity ? [azurerm_user_assigned_identity.aks_cluster[0].id] : null
@@ -214,6 +220,10 @@ resource "azurerm_kubernetes_cluster" "main" {
       condition     = var.private_dns_zone_id == "" || var.use_user_assigned_identity
       error_message = "private_dns_zone_id (BYO private DNS zone) requires use_user_assigned_identity = true. Microsoft mandates UAMI for the BYO DNS-zone path so AKS can create the API server A record before cluster credentials become resolvable. Set aks_use_user_assigned_identity = true at the root."
     }
+    precondition {
+      condition     = var.spoke_vnet_id == "" || var.use_user_assigned_identity
+      error_message = "network_mode='byo-vnet' (signalled by spoke_vnet_id being set) requires use_user_assigned_identity = true. With SAMI, the AKS cluster identity is created at the same instant as the cluster, so Network Contributor on the spoke VNet cannot be pre-assigned — cluster creation will fail to read the subnet or RT. Set aks_use_user_assigned_identity = true at the root."
+    }
 
     ignore_changes = [
       default_node_pool[0].upgrade_settings,
@@ -224,6 +234,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   depends_on = [
     azurerm_role_assignment.aks_cluster_network_contributor,
     azurerm_role_assignment.aks_cluster_dns_zone_contributor,
+    var.subnet_route_table_association_dependency,
   ]
 }
 

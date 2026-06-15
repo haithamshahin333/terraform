@@ -1,0 +1,37 @@
+modules/azure/infra/outputs.tf
+  s_22174db0dd6f78::t_3e0ce8e9dc122c 80
+  s_22174db0dd6f78::t_f753575e382349 98
+  s_22174db0dd6f78::t_e68d33667b0f6a 38
+modules/azure/infra/main.tf
+  s_22174db0dd6f78::t_41dbc90aeefcc1 386-387
+  s_22174db0dd6f78::t_fceab069ba70a9 168-169
+  s_22174db0dd6f78::t_5b17177300da7d 66,72-76
+  s_22174db0dd6f78::t_ae1bbb078483a5 362-363
+  s_22174db0dd6f78::t_96e5bef239dd95 114-115
+  s_22174db0dd6f78::t_1c52709abe2845 245-246
+  s_22174db0dd6f78::t_d7b77340686757 196-197
+  s_22174db0dd6f78::t_2e0915b73de3dc 405
+  s_22174db0dd6f78::t_3e0ce8e9dc122c 263,383-385,388-389,391-392
+  s_22174db0dd6f78::t_f922d4379ab4d4 193-195
+  s_22174db0dd6f78::t_212e82aeec905b 212-213
+  s_22174db0dd6f78::t_b0c726760e8ae7 86-87
+  s_22174db0dd6f78::t_aa4e70e48d3dda 27-29
+  s_22174db0dd6f78::t_fe08a53e6e1531 348-349
+  s_22174db0dd6f78::t_338c616feeab8d 336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "fcd0cfe5bbb9826274000ece951ebe93df0283f3",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

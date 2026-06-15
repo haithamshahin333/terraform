@@ -1,0 +1,30 @@
+modules/azure/infra/terraform.tfvars.hardened.example
+  s_22174db0dd6f78::t_ffaf8fccd324ef 42-43
+modules/azure/infra/variables.tf
+  s_22174db0dd6f78::t_e8dc0c90c11675 678
+modules/azure/BYO_NETWORK.md
+  s_22174db0dd6f78::t_6022fe1eca6785 28
+  s_22174db0dd6f78::t_418021d70602e9 220-224
+  s_22174db0dd6f78::t_d314ea0ee77edb 262
+modules/azure/infra/modules/k8s-cluster/main.tf
+  s_22174db0dd6f78::t_4b516e676f988d 84-92,101,103,114
+  s_22174db0dd6f78::t_8b0ca63f3df7df 60-66
+modules/azure/infra/modules/k8s-cluster/variables.tf
+  s_22174db0dd6f78::t_89dde226dfa678 258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "bf2de6936131d6c5cf4a59851891163c28d99b41",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

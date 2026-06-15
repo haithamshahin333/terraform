@@ -1,0 +1,21 @@
+modules/azure/infra/modules/k8s-cluster/variables.tf
+  s_22174db0dd6f78::t_1cdebb8445f0e0 190-252
+modules/azure/infra/variables.tf
+  s_22174db0dd6f78::t_3c27def86b91a7 584-672
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "13122c2bfc22a83c30affb377ee07340fc1b3967",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

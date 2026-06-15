@@ -1,0 +1,19 @@
+modules/azure/infra/modules/k8s-bootstrap/main.tf
+  s_22174db0dd6f78::t_3e0ce8e9dc122c 191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "d2f0f1bf1fa5e4ecb34dbbb5adcf1885529c0801",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

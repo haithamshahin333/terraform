@@ -1,0 +1,24 @@
+modules/azure/infra/main.tf
+  s_22174db0dd6f78::t_38183377a1eb98 121-124
+modules/azure/infra/modules/k8s-cluster/main.tf
+  s_22174db0dd6f78::t_3e0ce8e9dc122c 252,265
+  s_22174db0dd6f78::t_5c6699b2925246 142-149
+modules/azure/infra/tests/network_security.tftest.hcl
+  s_22174db0dd6f78::t_6d09f34360070f 40-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "53f9ab8935addf69ed427edfc15441ed95c48d5d",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

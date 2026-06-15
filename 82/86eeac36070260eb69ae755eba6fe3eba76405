@@ -1,0 +1,23 @@
+modules/azure/infra/terraform.tfvars.hardened.example
+  s_22174db0dd6f78::t_fa600eb5870e7b 1-43
+modules/azure/infra/modules/k8s-cluster/main.tf
+  s_22174db0dd6f78::t_c72c0f7111a3a5 6-11
+modules/azure/infra/modules/networking/main.tf
+  s_22174db0dd6f78::t_bc4ef4d516f9b9 32-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "8286eeac36070260eb69ae755eba6fe3eba76405",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

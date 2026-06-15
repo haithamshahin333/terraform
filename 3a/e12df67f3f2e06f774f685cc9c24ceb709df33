@@ -1,0 +1,22 @@
+modules/azure/README.md
+  s_22174db0dd6f78::t_2c046cedaa4be1 750-753
+  s_22174db0dd6f78::t_18546f005151ad 226-247
+modules/azure/BYO_NETWORK.md
+  s_22174db0dd6f78::t_688ed2fc8e33b5 1-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "3ae12df67f3f2e06f774f685cc9c24ceb709df33",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

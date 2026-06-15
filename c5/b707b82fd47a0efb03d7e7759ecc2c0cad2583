@@ -1,0 +1,40 @@
+modules/azure/infra/modules/k8s-cluster/main.tf
+  s_22174db0dd6f78::t_569a71c77b649b 74-106
+  s_22174db0dd6f78::t_e15d3bce86abdf 15-18
+  s_22174db0dd6f78::t_1087bbc31325a8 54-59
+  s_22174db0dd6f78::t_d1720d0e55f81d 170-173,175-176,179-182
+modules/azure/infra/validations.tf
+  s_22174db0dd6f78::t_1a10c467c271c6 41-49
+modules/azure/infra/main.tf
+  s_22174db0dd6f78::t_9eb52fca3755bb 166-169
+modules/azure/README.md
+  s_22174db0dd6f78::t_88b6a6a3d66d37 245
+modules/azure/BYO_NETWORK.md
+  s_22174db0dd6f78::t_4306aafc230b6c 245
+  s_22174db0dd6f78::t_89b066d63c8c83 28-29
+  s_22174db0dd6f78::t_97006fce721247 213-234
+  s_22174db0dd6f78::t_15090782525ce4 206-208
+  s_22174db0dd6f78::t_a0f35f614efb16 110-135
+modules/azure/infra/variables.tf
+  s_22174db0dd6f78::t_a153ae4e9c8fae 673-686
+modules/azure/infra/modules/k8s-cluster/variables.tf
+  s_22174db0dd6f78::t_019ab32c7cae37 253-266
+modules/azure/infra/terraform.tfvars.hardened.example
+  s_22174db0dd6f78::t_bb4d03a5e3c8a1 42-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "c5b707b82fd47a0efb03d7e7759ecc2c0cad2583",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

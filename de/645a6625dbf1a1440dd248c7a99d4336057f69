@@ -1,0 +1,20 @@
+modules/azure/infra/tests/network_security.tftest.hcl
+  s_22174db0dd6f78::t_ab90ae236d1128 1-35,37-39
+  s_22174db0dd6f78::t_044339cf2a3b9a 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "de645a6625dbf1a1440dd248c7a99d4336057f69",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

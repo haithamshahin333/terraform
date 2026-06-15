@@ -1,0 +1,21 @@
+modules/azure/infra/main.tf
+  s_22174db0dd6f78::t_68f3923a37b77a 42-47
+  s_22174db0dd6f78::t_0db044d909eb2b 390
+  s_22174db0dd6f78::t_1bcdd0e39f4252 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7ee1e0b77b0f7a627a9c713de6fa27a5d49c499b",
+  "prompts": {},
+  "sessions": {
+    "s_22174db0dd6f78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02ad403-3609-4cfa-b1a6-fb476f4927f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "haithamshahin333 <42976403+haithamshahin333@users.noreply.github.com>"
+    }
+  }
+}

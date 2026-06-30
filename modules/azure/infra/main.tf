@@ -35,13 +35,53 @@ locals {
   # Uses the user-supplied keyvault_name or derives from identifier.
   keyvault_name = var.keyvault_name != "" ? var.keyvault_name : "langsmith-kv${local.identifier}"
 
-  # Subnet ID resolution: use newly-created VNet subnets OR bring-your-own
-  # existing ones (set create_vnet = false and supply the IDs via variables).
-  vnet_id            = var.create_vnet ? module.vnet.vnet_id : var.vnet_id
-  aks_subnet_id      = var.create_vnet ? module.vnet.subnet_main_id : var.aks_subnet_id
-  postgres_subnet_id = var.create_vnet ? module.vnet.subnet_postgres_id : var.postgres_subnet_id
-  redis_subnet_id    = var.create_vnet ? module.vnet.subnet_redis_id : var.redis_subnet_id
-  agic_subnet_id     = var.create_vnet ? module.vnet.subnet_agic_id : ""
+  # Subnet ID dispatch by network_mode.
+  # - "create": use the standalone VNet module's outputs (count[0]).
+  # - "byo-vnet": use the spoke-network module's outputs (count[0]).
+  # - "byo-subnet": use the BYO subnet IDs supplied via variables.
+  vnet_id = (
+    var.network_mode == "create" ? module.vnet[0].vnet_id :
+    var.network_mode == "byo-vnet" ? var.spoke_vnet_id :
+    var.vnet_id
+  )
+
+  aks_subnet_id = (
+    var.network_mode == "create" ? module.vnet[0].subnet_main_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].aks_subnet_id :
+    var.aks_subnet_id
+  )
+
+  postgres_subnet_id = (
+    var.network_mode == "create" ? module.vnet[0].subnet_postgres_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].postgres_subnet_id :
+    var.postgres_subnet_id
+  )
+
+  redis_subnet_id = (
+    var.network_mode == "create" ? module.vnet[0].subnet_redis_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].redis_subnet_id :
+    var.redis_subnet_id
+  )
+
+  agic_subnet_id = (
+    var.network_mode == "create" ? module.vnet[0].subnet_agic_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].agic_subnet_id :
+    ""
+  )
+
+  # Bastion subnet — used only by the bastion module (no var.bastion_subnet_id today).
+  bastion_subnet_id = (
+    var.network_mode == "create" ? module.vnet[0].subnet_bastion_id :
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].bastion_subnet_id :
+    ""
+  )
+
+  # Dependency hook for the AKS UDR ordering constraint. Resolves to the
+  # route-table-association resource ID when present, else null. The
+  # k8s-cluster module's precondition uses this to gate cluster creation.
+  aks_subnet_rt_association_dependency = (
+    var.network_mode == "byo-vnet" ? module.spoke_network[0].aks_rt_association_id : null
+  )
 
   # ── Common tags ─────────────────────────────────────────────────────────────
   # Applied to every Azure resource in every sub-module.
@@ -58,6 +98,27 @@ locals {
   )
 }
 
+# ── Cluster-scoped providers ─────────────────────────────────────────────────
+# Configured from module.aks credentials. Inherited by module.k8s_bootstrap
+# (which used to declare these blocks inline — moving them here unblocks
+# count on that module, which is needed for the skip_k8s_bootstrap flag).
+
+provider "kubernetes" {
+  host                   = module.aks.host
+  client_certificate     = base64decode(module.aks.client_certificate)
+  client_key             = base64decode(module.aks.client_key)
+  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.aks.host
+    client_certificate     = base64decode(module.aks.client_certificate)
+    client_key             = base64decode(module.aks.client_key)
+    cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+  }
+}
+
 # The resource group that contains all LangSmith Azure resources.
 # Deleting this resource group will delete EVERYTHING inside it.
 resource "azurerm_resource_group" "resource_group" {
@@ -67,10 +128,13 @@ resource "azurerm_resource_group" "resource_group" {
 }
 
 # ── Networking ────────────────────────────────────────────────────────────────
-# Creates VNet + three dedicated subnets (AKS, PostgreSQL, Redis).
-# Skip this block (create_vnet = false) to reuse an existing VNet.
+# Creates VNet + dedicated subnets (AKS, Postgres, Redis, AGIC, Bastion).
+# Only instantiated when network_mode = "create" — the parallel spoke-network
+# module handles network_mode = "byo-vnet", and "byo-subnet" mode uses BYO IDs
+# directly without instantiating either networking module.
 
 module "vnet" {
+  count               = var.network_mode == "create" ? 1 : 0
   source              = "./modules/networking"
   network_name        = local.vnet_name
   location            = var.location
@@ -90,6 +154,43 @@ module "vnet" {
   # AGIC subnet: provisioned only when ingress_controller = "agic"
   enable_agic                = var.ingress_controller == "agic"
   agic_subnet_address_prefix = var.agic_subnet_address_prefix
+
+  tags = local.common_tags
+}
+
+# ── Spoke network (network_mode = "byo-vnet") ────────────────────────────────
+# Creates subnets inside the customer's pre-existing spoke VNet. Each subnet
+# is either created (CIDR provided) or BYO (existing subnet ID provided).
+# Route-table association on the AKS subnet is required for AKS UDR mode.
+
+module "spoke_network" {
+  count  = var.network_mode == "byo-vnet" ? 1 : 0
+  source = "./modules/spoke-network"
+
+  spoke_vnet_id                  = var.spoke_vnet_id
+  spoke_vnet_name                = var.spoke_vnet_name
+  spoke_vnet_resource_group_name = var.spoke_vnet_resource_group_name
+
+  # AKS subnet — always managed in byo-vnet mode (no BYO subnet ID flow here).
+  aks_subnet_address_prefix    = var.spoke_aks_subnet_address_prefix
+  aks_subnet_route_table_id    = var.spoke_aks_subnet_route_table_id
+  aks_subnet_service_endpoints = var.spoke_aks_subnet_service_endpoints
+
+  # Sibling subnets — gated by the same flags that drive the existing module's outputs.
+  create_postgres_subnet         = var.postgres_source == "external"
+  postgres_subnet_address_prefix = var.spoke_postgres_subnet_address_prefix
+  postgres_subnet_route_table_id = var.spoke_postgres_subnet_route_table_id
+
+  create_redis_subnet         = var.redis_source == "external"
+  redis_subnet_address_prefix = var.spoke_redis_subnet_address_prefix
+  redis_subnet_route_table_id = var.spoke_redis_subnet_route_table_id
+
+  create_agic_subnet         = var.ingress_controller == "agic"
+  agic_subnet_address_prefix = var.spoke_agic_subnet_address_prefix
+  agic_subnet_route_table_id = var.spoke_agic_subnet_route_table_id
+
+  create_bastion_subnet         = var.create_bastion
+  bastion_subnet_address_prefix = var.spoke_bastion_subnet_address_prefix
 
   tags = local.common_tags
 }
@@ -142,6 +243,25 @@ module "aks" {
   # Terraform-driven Helm/kubectl steps. Populate var.aks_authorized_ip_ranges
   # in terraform.tfvars to restrict to operator/CI CIDRs.
   authorized_ip_ranges = var.aks_authorized_ip_ranges
+
+  # Hub-spoke production knobs (default to no-ops when not set)
+  private_cluster_enabled = var.aks_private_cluster_enabled
+  private_dns_zone_id     = var.aks_private_dns_zone_id
+  network_plugin_mode     = var.aks_network_plugin_mode
+  pod_cidr                = var.aks_pod_cidr
+  outbound_type           = var.aks_outbound_type
+
+  # AKS UDR ordering — the cluster's precondition reads this to confirm
+  # the route-table-association exists before cluster create.
+  subnet_route_table_association_dependency = local.aks_subnet_rt_association_dependency
+
+  # Private-cluster bootstrap path — skip Helm ingress when caller cannot
+  # reach the private API server from terraform apply host.
+  skip_in_cluster_resources = var.skip_k8s_bootstrap
+
+  # UAMI for the cluster control plane — required for BYO private DNS zone.
+  use_user_assigned_identity = var.aks_use_user_assigned_identity
+  spoke_vnet_id              = var.network_mode == "byo-vnet" ? var.spoke_vnet_id : ""
 
   tags = local.common_tags
 }
@@ -250,7 +370,7 @@ module "keyvault" {
   # ── Secrets ─────────────────────────────────────────────────────────────────
   # Values come from TF_VAR_* on first apply. setup-env.sh reads from Key Vault
   # on subsequent applies, eliminating local .secret files.
-  postgres_admin_password = var.postgres_admin_password
+  postgres_admin_password  = var.postgres_admin_password
   langsmith_admin_password = var.langsmith_admin_password
   langsmith_license_key    = var.langsmith_license_key
   langsmith_api_key_salt   = var.langsmith_api_key_salt
@@ -280,19 +400,16 @@ module "keyvault" {
 #   Pass 2:   bash helm/scripts/generate-secrets.sh && bash helm/scripts/deploy.sh
 #   Pass 3+:  bash helm/scripts/deploy.sh --overlay overlays/<feature>.yaml
 #
-# Note: This module configures its own kubernetes/helm providers internally,
-# so depends_on cannot be used here. Implicit deps via input variables ensure
-# correct ordering (AKS/postgres/redis/blob must be ready before this runs).
+# Note: The kubernetes and helm providers used by this module are configured
+# at the root (see the provider blocks above, sourced from module.aks
+# credentials). They're inherited implicitly by this module. The inline
+# provider blocks that used to live inside k8s-bootstrap were moved out so
+# that count = var.skip_k8s_bootstrap ? 0 : 1 works (Terraform forbids count
+# on modules with inline provider configurations).
 
 module "k8s_bootstrap" {
+  count  = var.skip_k8s_bootstrap ? 0 : 1
   source = "./modules/k8s-bootstrap"
-
-  # Cluster connection — passed directly to the kubernetes/helm providers
-  # inside the k8s-bootstrap module.
-  host                   = module.aks.host
-  client_certificate     = module.aks.client_certificate
-  client_key             = module.aks.client_key
-  cluster_ca_certificate = module.aks.cluster_ca_certificate
 
   # K8s namespace for LangSmith workloads
   langsmith_namespace = var.langsmith_namespace
@@ -370,18 +487,19 @@ module "diagnostics" {
 # Enable with: create_bastion = true in terraform.tfvars
 
 module "bastion" {
-  count               = var.create_bastion ? 1 : 0
-  source              = "./modules/bastion"
-  name                = "langsmith-bastion${local.identifier}"
-  resource_group_name = azurerm_resource_group.resource_group.name
-  location            = var.location
-  subnet_id           = module.vnet.subnet_bastion_id
-  vm_size             = var.bastion_vm_size
+  count                = var.create_bastion ? 1 : 0
+  source               = "./modules/bastion"
+  name                 = "langsmith-bastion${local.identifier}"
+  resource_group_name  = azurerm_resource_group.resource_group.name
+  location             = var.location
+  subnet_id            = local.bastion_subnet_id
+  vm_size              = var.bastion_vm_size
   admin_ssh_public_key = var.bastion_admin_ssh_public_key
-  allowed_ssh_cidrs   = var.bastion_allowed_ssh_cidrs
-  tags                = local.common_tags
+  allowed_ssh_cidrs    = var.bastion_allowed_ssh_cidrs
+  tags                 = local.common_tags
 
-  depends_on = [module.vnet]
+  # depends_on removed — module.vnet may not exist (count=0) in non-create modes.
+  # The implicit dependency through local.bastion_subnet_id is sufficient.
 }
 
 # ── DNS (optional) ────────────────────────────────────────────────────────────

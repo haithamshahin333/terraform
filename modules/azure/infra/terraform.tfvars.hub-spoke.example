@@ -1,0 +1,64 @@
+# Hub-spoke / BYO-VNet example tfvars.
+# Copy to terraform.tfvars and replace the placeholder IDs with real values.
+# See docs/superpowers/specs/2026-05-17-aks-hub-spoke-byo-vnet-design.md
+# for the full prerequisites checklist.
+
+identifier      = "-prod"
+location        = "eastus"
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# ── Network mode: BYO spoke VNet ─────────────────────────────────────────────
+network_mode                   = "byo-vnet"
+spoke_vnet_id                  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/network-rg/providers/Microsoft.Network/virtualNetworks/spoke-prod-vnet"
+spoke_vnet_name                = "spoke-prod-vnet"
+spoke_vnet_resource_group_name = "network-rg"
+
+# AKS subnet — module creates this inside the spoke VNet
+spoke_aks_subnet_address_prefix = ["10.42.1.0/24"]
+spoke_aks_subnet_route_table_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/network-rg/providers/Microsoft.Network/routeTables/spoke-prod-rt"
+# (route table must have 0.0.0.0/0 → hub firewall private IP pre-configured)
+
+# Postgres subnet (since postgres_source = "external" below)
+spoke_postgres_subnet_address_prefix = ["10.42.2.0/24"]
+
+# Redis subnet (since redis_source = "external" below)
+spoke_redis_subnet_address_prefix = ["10.42.3.0/24"]
+
+# ── AKS production knobs ─────────────────────────────────────────────────────
+aks_private_cluster_enabled = true
+aks_private_dns_zone_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/dns-rg/providers/Microsoft.Network/privateDnsZones/privatelink.eastus.azmk8s.io"
+
+aks_network_plugin_mode = "overlay"
+aks_pod_cidr            = "10.244.0.0/16"
+aks_outbound_type       = "userDefinedRouting"
+
+aks_service_cidr   = "172.16.0.0/16"
+aks_dns_service_ip = "172.16.0.10"
+
+# Cluster control plane uses UAMI (default; explicit for clarity).
+aks_use_user_assigned_identity = true
+
+# Defer in-cluster bootstrap to a post-apply step from a jump-host that can
+# reach the private API server. See §10.3 of the design spec.
+skip_k8s_bootstrap = true
+
+# ── Backing services (external — current behavior preserved) ─────────────────
+postgres_source         = "external"
+postgres_admin_username = "langsmith"
+postgres_database_name  = "langsmith"
+
+redis_source = "external"
+
+# ── Ingress controller — public LB for now; internal-LB support is a separate update.
+ingress_controller = "nginx"
+
+# ── Sensitive values supplied via secrets.auto.tfvars or env vars ─────────────
+# postgres_admin_password = "..."
+# langsmith_admin_password = "..."
+# langsmith_license_key = "..."
+# langsmith_api_key_salt = "..."
+# langsmith_jwt_secret = "..."
+# langsmith_deployments_encryption_key = "..."
+# langsmith_agent_builder_encryption_key = "..."
+# langsmith_insights_encryption_key = "..."
+# langsmith_polly_encryption_key = "..."

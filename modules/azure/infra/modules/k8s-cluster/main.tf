@@ -3,20 +3,23 @@
 # Purpose: Azure Kubernetes Service cluster for running LangSmith workloads.
 #
 # Key design decisions:
-#   • Azure CNI network plugin: pods get IPs directly from the subnet, enabling
-#     full VNet connectivity (pods can reach PostgreSQL/Redis by private IP).
-#     Tradeoff: uses more IPs than kubenet, but required for private DB access.
+#   • Azure CNI network plugin: pods get IPs directly from the subnet (classic)
+#     or from pod_cidr (overlay). Classic gives full VNet connectivity; overlay
+#     dramatically reduces subnet IP consumption. Toggle via network_plugin_mode.
 #   • OIDC issuer + Workload Identity: allows Kubernetes service accounts to
 #     federate with Azure AD and assume Managed Identities — used by LangSmith
 #     pods to authenticate to Azure Blob Storage without static keys.
-#   • System-assigned Managed Identity: AKS manages its own identity for
-#     pulling images, accessing node resource group, and VMSS operations.
+#   • Cluster control plane identity: switchable between SystemAssigned (default,
+#     legacy back-compat) and UserAssigned (required for BYO private DNS zone
+#     and hub-spoke BYO-VNet modes — Microsoft mandates UAMI when role
+#     assignments must exist before cluster creation).
 #   • Default node pool: Standard_DS3_v2 (4 vCPU, 14 GB RAM) — DSv2 family
 #     has broad quota availability across subscriptions.
 #   • Additional "large" pool: Standard_DS4_v2 (8 vCPU, 28 GB) for ClickHouse
 #     and other stateful/memory-intensive workloads.
-#   • NGINX ingress: deployed via Helm, exposes a single Azure Load Balancer
-#     IP that routes to all LangSmith services by path/host.
+#   • NGINX ingress: deployed via Helm, exposes an Azure Load Balancer
+#     (public or internal). Skippable for private clusters where bootstrap
+#     runs from a jump-host (see skip_in_cluster_resources).
 # ══════════════════════════════════════════════════════════════════════════════
 
 locals {
@@ -34,11 +37,13 @@ locals {
   # AGIC add-on identity — extracted from the cluster resource after apply.
   # Azure creates this identity automatically in the MC_ node resource group.
   # The identity needs 3 role assignments (see below).
-  agic_addon_principal_id = (
-    var.ingress_controller == "agic" &&
-    length(azurerm_kubernetes_cluster.main.ingress_application_gateway) > 0 &&
-    length(azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity) > 0
-  ) ? azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id : null
+  # try() wraps the index access because Terraform's && does not always short-
+  # circuit early enough for index expressions on empty lists; when AGIC is off,
+  # ingress_application_gateway is [], and the [0] would otherwise fail eagerly.
+  agic_addon_principal_id = var.ingress_controller == "agic" ? try(
+    azurerm_kubernetes_cluster.main.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id,
+    null
+  ) : null
 
   # Derive VNet resource ID from the AGIC subnet ID by stripping the /subnets/... suffix.
   # e.g. /subscriptions/.../virtualNetworks/langsmith-vnet-dz/subnets/langsmith-vnet-dz-subnet-agic
@@ -107,18 +112,32 @@ resource "azurerm_kubernetes_cluster" "main" {
     # Required when auto_scaling_enabled = true and the pool is being replaced.
     temporary_name_for_rotation = "defaulttmp"
 
-    # max_surge = "0" prevents AKS from creating a temporary surge node during
-    # node pool updates (e.g. max_pods change). Instead it drains the existing
-    # node in-place. Required when vCPU quota is tight (surge needs quota for
-    # a full extra node of the same VM size).
+    # Availability zones the default node pool spreads across. Pinned at
+    # creation time — AKS does not support changing zones on an existing
+    # node pool (see lifecycle.ignore_changes below).
     zones = var.availability_zones
   }
 
-  # System-assigned Managed Identity: AKS uses this to manage node VMs,
-  # pull from ACR (if configured), and interact with the node resource group.
+  # Cluster control plane identity. Defaults to SystemAssigned (legacy AKS
+  # default — created with the cluster). When var.use_user_assigned_identity
+  # is true, switches to a UserAssigned identity created in this module
+  # (see azurerm_user_assigned_identity.aks_cluster below) so role
+  # assignments on the spoke VNet and BYO private DNS zone can be created
+  # BEFORE the cluster.
   identity {
-    type = "SystemAssigned"
+    type         = var.use_user_assigned_identity ? "UserAssigned" : "SystemAssigned"
+    identity_ids = var.use_user_assigned_identity ? [azurerm_user_assigned_identity.aks_cluster[0].id] : null
   }
+
+  # Private cluster + DNS zone. private_dns_zone_id = "System" lets AKS create
+  # its own zone in the MC_ RG; an explicit resource ID points at a BYO zone.
+  private_cluster_enabled             = var.private_cluster_enabled
+  private_cluster_public_fqdn_enabled = false
+  private_dns_zone_id = (
+    var.private_cluster_enabled
+    ? (var.private_dns_zone_id != "" ? var.private_dns_zone_id : "System")
+    : null
+  )
 
   # API server authorized IP ranges. Empty list (default) omits the block so
   # the master endpoint stays publicly reachable — required for the apply
@@ -126,7 +145,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # operators running ad-hoc kubectl from anywhere. Production deployments
   # populate var.authorized_ip_ranges with their CI runner / jumpbox CIDRs.
   dynamic "api_server_access_profile" {
-    for_each = length(var.authorized_ip_ranges) > 0 ? [1] : []
+    for_each = !var.private_cluster_enabled && length(var.authorized_ip_ranges) > 0 ? [1] : []
     content {
       authorized_ip_ranges = var.authorized_ip_ranges
     }
@@ -139,10 +158,21 @@ resource "azurerm_kubernetes_cluster" "main" {
   # NetworkPolicy resources actually deny traffic — without it, NetworkPolicy
   # objects are accepted by the API but never enforced.
   network_profile {
-    network_plugin = "azure"
-    network_policy = "azure"
-    service_cidr   = var.service_cidr   # default: 10.0.64.0/20 (K8s ClusterIP range)
-    dns_service_ip = var.dns_service_ip # default: 10.0.64.10  (CoreDNS ClusterIP)
+    network_plugin      = "azure"
+    network_plugin_mode = var.network_plugin_mode != "" ? var.network_plugin_mode : null
+    network_policy      = "azure"
+    service_cidr        = var.service_cidr
+    dns_service_ip      = var.dns_service_ip
+    outbound_type       = var.outbound_type
+
+    pod_cidr = var.network_plugin_mode == "overlay" ? var.pod_cidr : null
+
+    dynamic "load_balancer_profile" {
+      for_each = var.outbound_type == "loadBalancer" ? [1] : []
+      content {
+        managed_outbound_ip_count = 1
+      }
+    }
   }
 
   # Key Vault CSI Secrets Store driver — enables pods to mount secrets from
@@ -180,16 +210,34 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   lifecycle {
-    # upgrade_settings change during rolling node upgrades; ignore to prevent
-    # drift between Terraform state and live cluster configuration.
-    # zones: AKS does not support changing zones on an existing node pool —
-    # it is only applied at creation time. Ignoring prevents forced recreation
-    # when availability_zones is set on an existing cluster.
+    precondition {
+      condition     = var.network_plugin_mode != "overlay" || var.pod_cidr != ""
+      error_message = "network_plugin_mode='overlay' requires pod_cidr to be set."
+    }
+    precondition {
+      condition     = var.outbound_type != "userDefinedRouting" || var.subnet_route_table_association_dependency != null
+      error_message = "outbound_type='userDefinedRouting' requires the AKS subnet to have a route table association. Use network_mode='byo-vnet' (which creates one) or pre-associate the RT yourself before using byo-subnet mode."
+    }
+    precondition {
+      condition     = var.private_dns_zone_id == "" || var.use_user_assigned_identity
+      error_message = "private_dns_zone_id (BYO private DNS zone) requires use_user_assigned_identity = true. Microsoft mandates UAMI for the BYO DNS-zone path so AKS can create the API server A record before cluster credentials become resolvable. Set aks_use_user_assigned_identity = true at the root."
+    }
+    precondition {
+      condition     = var.spoke_vnet_id == "" || var.use_user_assigned_identity
+      error_message = "network_mode='byo-vnet' (signalled by spoke_vnet_id being set) requires use_user_assigned_identity = true. With SAMI, the AKS cluster identity is created at the same instant as the cluster, so Network Contributor on the spoke VNet cannot be pre-assigned — cluster creation will fail to read the subnet or RT. Set aks_use_user_assigned_identity = true at the root."
+    }
+
     ignore_changes = [
       default_node_pool[0].upgrade_settings,
       default_node_pool[0].zones,
     ]
   }
+
+  depends_on = [
+    azurerm_role_assignment.aks_cluster_network_contributor,
+    azurerm_role_assignment.aks_cluster_dns_zone_contributor,
+    var.subnet_route_table_association_dependency,
+  ]
 }
 
 # Additional node pools for workloads that need different compute profiles.
@@ -245,7 +293,7 @@ resource "azurerm_user_assigned_identity" "cert_manager" {
 # Allows cert-manager pod to exchange its K8s OIDC token for an Azure AD token
 # so it can call the Azure DNS API without a static service principal secret.
 resource "azurerm_federated_identity_credential" "cert_manager" {
-  name      = "${var.cluster_name}-cert-manager-federated"
+  name                      = "${var.cluster_name}-cert-manager-federated"
   user_assigned_identity_id = azurerm_user_assigned_identity.cert_manager.id
 
   audience = ["api://AzureADTokenExchange"]
@@ -253,12 +301,47 @@ resource "azurerm_federated_identity_credential" "cert_manager" {
   subject  = "system:serviceaccount:cert-manager:cert-manager"
 }
 
+# ── Cluster control plane UAMI ────────────────────────────────────────────────
+# Microsoft requires UAMI (not SAMI) for the BYO private DNS zone path and
+# highly recommends it for BYO VNet + route table. The identity is created
+# BEFORE the cluster so role assignments on the spoke VNet and BYO DNS zone
+# can be pre-assigned — no time_sleep workaround needed.
+# See: https://learn.microsoft.com/azure/aks/use-managed-identity
+
+resource "azurerm_user_assigned_identity" "aks_cluster" {
+  count               = var.use_user_assigned_identity ? 1 : 0
+  name                = "${var.cluster_name}-cluster-identity"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  tags                = merge(var.tags, { module = "aks" })
+}
+
+# Network Contributor on the spoke VNet — needed when the AKS subnet is in a
+# different RG than the cluster (always true in byo-vnet mode). Without this,
+# AKS create fails to read the subnet/route table, or node pool ops fail later.
+resource "azurerm_role_assignment" "aks_cluster_network_contributor" {
+  count                = var.use_user_assigned_identity && var.spoke_vnet_id != "" ? 1 : 0
+  scope                = var.spoke_vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_cluster[0].principal_id
+}
+
+# Private DNS Zone Contributor on the BYO zone — required for AKS to create
+# the A record for the API server private endpoint. Microsoft documents this
+# as mandatory for the custom private DNS zone path.
+resource "azurerm_role_assignment" "aks_cluster_dns_zone_contributor" {
+  count                = var.use_user_assigned_identity && var.private_dns_zone_id != "" ? 1 : 0
+  scope                = var.private_dns_zone_id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_cluster[0].principal_id
+}
+
 # Federated Identity Credentials — bind each LangSmith K8s service account to
 # the Managed Identity via OIDC. One credential per service account.
 resource "azurerm_federated_identity_credential" "k8s_app" {
   for_each = toset(local.service_accounts_for_workload_identity)
 
-  name      = "langsmith-federated-${each.value}"
+  name                      = "langsmith-federated-${each.value}"
   user_assigned_identity_id = azurerm_user_assigned_identity.k8s_app.id
 
   audience = ["api://AzureADTokenExchange"]
@@ -271,7 +354,7 @@ resource "azurerm_federated_identity_credential" "k8s_app" {
 # Routes traffic to LangSmith services by host/path via Ingress rules.
 # cert-manager integrates with NGINX to automate TLS certificate provisioning.
 resource "helm_release" "nginx_ingress" {
-  count      = var.ingress_controller == "nginx" ? 1 : 0
+  count      = var.ingress_controller == "nginx" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "ingress-nginx"
   namespace  = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -328,7 +411,7 @@ resource "helm_release" "nginx_ingress" {
 # istio-base: installs the Istio CRDs (VirtualService, Gateway, DestinationRule, etc.)
 # into the cluster. Must be applied first — istiod and the gateway depend on these CRDs.
 resource "helm_release" "istio_base" {
-  count      = var.ingress_controller == "istio" ? 1 : 0
+  count      = var.ingress_controller == "istio" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istio-base"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -341,7 +424,7 @@ resource "helm_release" "istio_base" {
 # istiod: the Istio control plane — manages service mesh policy, certificate
 # rotation, and injects Envoy sidecars into pods in mesh-enabled namespaces.
 resource "helm_release" "istiod" {
-  count      = var.ingress_controller == "istio" ? 1 : 0
+  count      = var.ingress_controller == "istio" && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istiod"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -368,7 +451,7 @@ resource "helm_release" "istiod" {
 # Replaces NGINX when Istio is in use. Gateway + VirtualService resources
 # (in use-cases/istio/) route traffic to LangSmith services.
 resource "helm_release" "istio_gateway" {
-  count      = var.ingress_controller == "istio" && var.istio_external_gateway_enabled ? 1 : 0
+  count      = var.ingress_controller == "istio" && var.istio_external_gateway_enabled && !var.skip_in_cluster_resources ? 1 : 0
   name       = "istio-ingressgateway"
   namespace  = "istio-system"
   repository = "https://istio-release.storage.googleapis.com/charts"
@@ -542,7 +625,7 @@ resource "azurerm_role_assignment" "agic_vnet_network_contributor" {
 # See: helm/values/examples/langsmith-values-ingress-envoy-gateway.yaml
 
 resource "helm_release" "envoy_gateway" {
-  count     = var.ingress_controller == "envoy-gateway" ? 1 : 0
+  count     = var.ingress_controller == "envoy-gateway" && !var.skip_in_cluster_resources ? 1 : 0
   name      = "envoy-gateway"
   namespace = "envoy-gateway-system"
   chart     = "oci://docker.io/envoyproxy/gateway-helm"

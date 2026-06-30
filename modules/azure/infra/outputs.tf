@@ -77,7 +77,7 @@ output "langsmith_url" {
   description = "URL where LangSmith is accessible."
   value = (
     var.langsmith_domain != "" ? "https://${var.langsmith_domain}" :
-    var.dns_label != ""  ? "https://${var.dns_label}.${var.location}.cloudapp.azure.com" :
+    var.dns_label != "" ? "https://${var.dns_label}.${var.location}.cloudapp.azure.com" :
     var.ingress_controller == "agic" && module.aks.agw_public_ip_fqdn != null && module.aks.agw_public_ip_fqdn != "" ? "https://${module.aks.agw_public_ip_fqdn}" :
     "No domain configured — set dns_label or langsmith_domain in terraform.tfvars"
   )
@@ -89,8 +89,8 @@ output "langsmith_admin_email" {
 }
 
 output "langsmith_namespace" {
-  description = "Kubernetes namespace where LangSmith is deployed"
-  value       = module.k8s_bootstrap.langsmith_namespace
+  description = "Kubernetes namespace where LangSmith is deployed (empty when skip_k8s_bootstrap=true — customer creates the namespace from the jump-host)."
+  value       = var.skip_k8s_bootstrap ? "" : module.k8s_bootstrap[0].langsmith_namespace
 }
 
 output "get_credentials_command" {
@@ -159,4 +159,39 @@ output "cert_manager_identity_client_id" {
 output "dns_nameservers" {
   description = "Azure nameservers for the DNS zone — configure at your registrar"
   value       = var.create_dns_zone ? module.dns[0].nameservers : []
+}
+
+# ── Hub-spoke / private cluster outputs ───────────────────────────────────────
+
+output "aks_private_fqdn" {
+  description = "Private FQDN of the API server. Set only when aks_private_cluster_enabled = true. Used by operators on a jump-host that resolves via the hub's DNS resolver."
+  value       = module.aks.private_fqdn
+}
+
+output "spoke_aks_subnet_id" {
+  description = "Resource ID of the AKS subnet (module-created or BYO). Useful for downstream IaC that needs to add NSG rules, private endpoints, etc."
+  value       = local.aks_subnet_id
+}
+
+output "network_mode" {
+  description = "Echoes the network_mode the deployment used."
+  value       = var.network_mode
+}
+
+# ── Post-apply bootstrap (consumed when skip_k8s_bootstrap = true) ───────────
+# Existing outputs already in this file are also consumed by the post-apply
+# flow — see docs/superpowers/specs/2026-05-17-aks-hub-spoke-byo-vnet-design.md
+# §10.3 for the canonical bootstrap sequence. These two new outputs round out
+# the set so a jump-host can recreate every K8s secret and Helm release.
+
+output "postgres_admin_password" {
+  description = "Postgres admin password (echoes var.postgres_admin_password). Used by post-apply bootstrap to populate POSTGRES_PASSWORD in langsmith-postgres-secret."
+  value       = var.postgres_admin_password
+  sensitive   = true
+}
+
+output "langsmith_license_key" {
+  description = "LangSmith license key (echoes var.langsmith_license_key). Used by post-apply bootstrap to create the langsmith-license secret. Outputs and variables share names safely — they're in distinct namespaces."
+  value       = var.langsmith_license_key
+  sensitive   = true
 }

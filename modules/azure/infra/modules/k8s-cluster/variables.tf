@@ -187,3 +187,74 @@ variable "authorized_ip_ranges" {
   description = "External CIDRs permitted to reach the AKS API server. Empty list (default) omits the api_server_access_profile block, leaving the master publicly reachable so the apply host's Helm/kubectl steps work from any operator. Production deployments populate this with operator/CI egress CIDRs."
   default     = []
 }
+
+# ── Private cluster + production network knobs ───────────────────────────────
+
+variable "private_cluster_enabled" {
+  type        = bool
+  default     = false
+  description = "Make the AKS API server a private endpoint (no public FQDN). Required for hub-spoke production deployments."
+}
+
+variable "private_dns_zone_id" {
+  type        = string
+  default     = ""
+  description = "Resource ID of a customer-managed private DNS zone. Must be named privatelink.<region>.azmk8s.io and linked to whichever VNets need to resolve the API server. When empty AND private_cluster_enabled=true, AKS uses System (auto-creates zone in MC_ RG, linked to spoke only)."
+}
+
+variable "network_plugin_mode" {
+  type        = string
+  default     = ""
+  description = "Set to 'overlay' for Azure CNI Overlay (pod IPs from pod_cidr, not the VNet). Empty = classic Azure CNI."
+
+  validation {
+    condition     = var.network_plugin_mode == "" || var.network_plugin_mode == "overlay"
+    error_message = "network_plugin_mode must be empty or 'overlay'."
+  }
+}
+
+variable "pod_cidr" {
+  type        = string
+  default     = ""
+  description = "Pod CIDR for Azure CNI Overlay (required when network_plugin_mode='overlay'). Must not overlap the VNet, service_cidr, or any peered network."
+}
+
+variable "outbound_type" {
+  type        = string
+  default     = "loadBalancer"
+  description = "AKS cluster egress mode. 'loadBalancer' (default) provisions a public Standard LB. 'userDefinedRouting' relies on the subnet's route table — required for hub-spoke topologies."
+
+  validation {
+    condition     = contains(["loadBalancer", "userDefinedRouting", "managedNATGateway", "userAssignedNATGateway"], var.outbound_type)
+    error_message = "outbound_type must be one of loadBalancer, userDefinedRouting, managedNATGateway, userAssignedNATGateway."
+  }
+}
+
+variable "subnet_route_table_association_dependency" {
+  type        = string
+  default     = null
+  nullable    = true
+  description = "Dependency hook. The root module passes the spoke-network module's RT association resource ID through so the cluster's depends_on can order cluster creation after the RT-subnet association exists. Required (non-null) when outbound_type = userDefinedRouting — enforced via lifecycle precondition. Null when outbound_type = loadBalancer."
+}
+
+# ── In-cluster resource skip (private cluster bootstrap) ─────────────────────
+
+variable "skip_in_cluster_resources" {
+  type        = bool
+  default     = false
+  description = "Skip Helm releases owned by this module (ingress controllers). For private clusters when terraform apply runs from a host that cannot reach the API server. Customer runs the equivalent Helm commands from a jump-host."
+}
+
+# ── User-Assigned Managed Identity for the cluster control plane ─────────────
+
+variable "use_user_assigned_identity" {
+  type        = bool
+  default     = false
+  description = "Use UAMI for the AKS control plane. Default false to preserve legacy SAMI behavior on existing clusters. Set true for new deployments. The cluster resource has a precondition that REQUIRES this be true when private_dns_zone_id != \"\" (Microsoft mandate for BYO private DNS zone)."
+}
+
+variable "spoke_vnet_id" {
+  type        = string
+  default     = ""
+  description = "Resource ID of the spoke VNet — used to scope the cluster UAMI's Network Contributor role assignment. Empty when network_mode != 'byo-vnet'."
+}

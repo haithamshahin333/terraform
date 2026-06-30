@@ -1,22 +1,8 @@
 # ── Providers ─────────────────────────────────────────────────────────────────
-# Credentials are passed in from the root module via variables (not from a local
-# kubeconfig) so this module works in CI/CD pipelines without file system access.
-
-provider "kubernetes" {
-  host                   = var.host
-  client_certificate     = base64decode(var.client_certificate)
-  client_key             = base64decode(var.client_key)
-  cluster_ca_certificate = base64decode(var.cluster_ca_certificate)
-}
-
-provider "helm" {
-  kubernetes {
-    host                   = var.host
-    client_certificate     = base64decode(var.client_certificate)
-    client_key             = base64decode(var.client_key)
-    cluster_ca_certificate = base64decode(var.cluster_ca_certificate)
-  }
-}
+# This module's kubernetes and helm providers are configured by the root
+# module (using module.aks credentials) and inherited here implicitly. The
+# host/cert/key variables below remain for documentation of what credentials
+# the module's resources will use.
 
 # ── Namespace ─────────────────────────────────────────────────────────────────
 # Dedicated namespace isolates LangSmith workloads from other cluster tenants.
@@ -188,7 +174,7 @@ resource "kubernetes_secret_v1" "postgres" {
   }
 
   data = {
-    connection_url    = var.postgres_connection_url
+    connection_url = var.postgres_connection_url
     # POSTGRES_URI and POSTGRES_PASSWORD are required by the listener's deploy_image
     # task (host.platforms.k8s_operator.database_k8s.add_postgres_uri_secret) to
     # provision per-deployment databases for LangSmith Deployments (Pass 3+).
